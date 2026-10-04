@@ -21,35 +21,71 @@
   input { font:inherit; padding:8px 10px; width:120px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); }
   button { font:inherit; padding:8px 14px; border:0; border-radius:8px; background:var(--accent); color:#fff; cursor:pointer; }
   .narr { white-space:pre-wrap; } .err { color:var(--warn); } .mute { color:var(--mute); }
+  .intro p { margin:0 0 8px; } .steps { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; margin-top:12px; }
+  .step { border:1px solid var(--line); border-radius:10px; padding:10px 12px; font-size:14px; } .step b { display:block; color:var(--accent); }
+  .num { display:inline-block; width:22px; height:22px; line-height:22px; text-align:center; border-radius:50%; background:var(--accent); color:#fff; font-size:12px; margin-right:6px; letter-spacing:0; }
+  pre.tx { white-space:pre-wrap; font:13px/1.55 ui-monospace, Menlo, monospace; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:12px; max-height:260px; overflow:auto; margin:0; }
+  .cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; } .q { color:var(--mute); font-style:italic; } .item { padding:8px 0; border-bottom:1px solid var(--line); font-size:14px; }
   .tl { font-size:14px; } .tl div { padding:6px 0; border-bottom:1px solid var(--line); }
 </style>
 </head>
 <body>
 <main>
   <h1>Nebula <span class="mute">demo</span></h1>
-  <p class="sub">Read from a disposable Neon branch. Prices and facts come from Postgres, not from a model.</p>
+  <p class="sub">Your agent in the meeting you're not invited to.</p>
+  <div class="card intro">
+    <h2>What you are looking at</h2>
+    <p>Example: <b>Fail Fast</b> sells software to freight companies. It had a 30-minute call with <b>Pacific Freight Partners</b>, but only the CFO attended. The person who signs, the CEO, was not there.</p>
+    <p>Nebula turns that call into a living proposal and tells the seller what happens when the CEO opens it. Everything below is real data from the demo, and the prices come from the database, never from the AI.</p>
+    <div class="steps">
+      <div class="step"><b>1 · The meeting</b>What was said, and what the agent extracted from it.</div>
+      <div class="step"><b>2 · The proposal</b>Exact price built from the seller's own rules.</div>
+      <div class="step"><b>3 · The CEO's what-if</b>She tests "what if we are 40 users?" on her own.</div>
+      <div class="step"><b>4 · The deal radar</b>What the seller sees: who read it and what worries them.</div>
+    </div>
+  </div>
+  <div id="brief" class="card"><h2><span class="num">1</span>The meeting</h2>Loading…</div>
   <div id="proposal" class="card"><h2>Proposal</h2>Loading…</div>
   <div class="card">
-    <h2>What if we're more users?</h2>
+    <h2><span class="num">3</span>The CEO tests a bigger team</h2>
     <p class="mute" style="margin-top:0">Simulation only. The official proposal does not change.</p>
     <form id="simform" class="row" style="align-items:center;gap:10px">
       <input id="users" type="number" min="1" value="40" aria-label="Number of users"> <button>Simulate</button>
     </form>
     <div id="simout" style="margin-top:14px"></div>
   </div>
-  <div id="radar" class="card"><h2>Deal radar</h2>Loading…</div>
+  <div id="radar" class="card"><h2><span class="num">4</span>Deal radar (what the seller sees)</h2>Loading…</div>
 </main>
 <script>
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const money = (n, cur) => new Intl.NumberFormat("en-US",{style:"currency",currency:cur||"USD",maximumFractionDigits:0}).format(n);
 const get = async u => { const r = await fetch(u); const j = await r.json(); if (!r.ok) throw new Error(j.error); return j; };
 
+async function brief() {
+  const el = document.getElementById("brief");
+  try {
+    const b = await get("/api/brief");
+    const list = (arr, k, extra) => arr.map(x => `<div class="item"><b>${esc(x[k])}</b>${extra ? ` <span class="mute">${esc(x[extra])}</span>` : ""}<div class="q">“${esc(x.quote)}” — ${esc(x.speaker)}</div></div>`).join("") || `<div class="mute">None</div>`;
+    el.innerHTML = `<h2><span class="num">1</span>The meeting · ${esc(b.company_name)}</h2>
+      <p style="margin-top:0">${esc(b.summary)}</p>
+      <div class="cols">
+        <div><h2>Meeting notes (transcript)</h2><pre class="tx">${esc(b.transcript)}</pre></div>
+        <div><h2>What the agent extracted, in the customer's own words</h2>
+          <div class="mute" style="font-size:13px;margin:8px 0 2px">Needs</div>${list(b.needs, "need")}
+          <div class="mute" style="font-size:13px;margin:8px 0 2px">Wow moments</div>${list(b.wow_moments, "moment", "trigger")}
+          <div class="mute" style="font-size:13px;margin:8px 0 2px">Objections</div>${list(b.objections, "objection")}
+          <div class="mute" style="font-size:13px;margin:8px 0 2px">Still open</div>${b.open_questions.map(q => `<div class="item">${esc(q)}</div>`).join("") || `<div class="mute">None</div>`}
+        </div>
+      </div>`;
+  } catch (e) { el.innerHTML = `<h2><span class="num">1</span>The meeting</h2><div class="err">${esc(e.message)}</div>`; }
+}
+
 async function proposal() {
   const el = document.getElementById("proposal");
   try {
     const p = await get("/api/proposal"), q = p.quote;
     const tot = q.totals.map(t => `<div><div class="mute">${esc(t.recurrence_label)}</div><div class="big">${money(t.total,t.currency)}</div></div>`).join("");
-    el.innerHTML = `<h2>Proposal ${esc(p.proposal_code)} · ${esc(p.company_name)} <span class="pill">${esc(p.status_label)}</span></h2>
+    el.innerHTML = `<h2><span class="num">2</span>The proposal · ${esc(p.proposal_code)} · ${esc(p.company_name)} <span class="pill">${esc(p.status_label)}</span></h2>
       <div class="row" style="margin-bottom:12px">${tot}</div>
       <table><tr><th>Item</th><th class="n">Qty</th><th class="n">Unit</th><th class="n">Subtotal</th><th></th></tr>
       ${q.lines.map(l => `<tr><td>${esc(l.concept_name)}<div class="mute">${esc(l.note)}</div></td><td class="n">${l.quantity}</td><td class="n">${money(l.unit_price,l.currency)}</td><td class="n">${money(l.subtotal,l.currency)}</td><td><span class="pill">${esc(l.recurrence_label)}</span></td></tr>`).join("")}</table>
@@ -63,7 +99,7 @@ async function radar() {
   try {
     const r = await get("/api/radar"), p = r.proposals[0];
     const head = p ? `<div class="row" style="margin-bottom:12px">${[["Opens",p.opens],["Viewers",p.distinct_viewers],["Not in meeting",p.viewers_not_in_meeting],["Questions",p.questions],["Simulations",p.simulations],["Escalations",p.escalations]].map(([k,v]) => `<div><div class="mute">${k}</div><div class="big">${v}</div></div>`).join("")}</div>` : "";
-    el.innerHTML = `<h2>Deal radar</h2>${head}
+    el.innerHTML = `<h2><span class="num">4</span>Deal radar (what the seller sees)</h2>${head}
       <table><tr><th>Who</th><th>Role</th><th></th><th class="n">Opens</th><th class="n">Questions</th></tr>
       ${r.stakeholders.map(s => `<tr><td>${esc(s.stakeholder_name)}<div class="mute">${esc(s.title)}</div></td><td>${esc(s.role_category_label)}</td><td><span class="pill ${s.attended_meeting?"in":"out"}">${esc(s.attended_meeting_label)}</span></td><td class="n">${s.opens}</td><td class="n">${s.questions}</td></tr>`).join("")}</table>
       <h2 style="margin-top:18px">Timeline</h2><div class="tl">${r.timeline.map(t => `<div><b>${esc(t.stakeholder_name)}</b> · ${esc(t.event_type_label)}${t.payload && t.payload.question ? ` — “${esc(t.payload.question)}”` : ""}${t.payload && t.payload.monthly_total ? ` — ${money(t.payload.monthly_total,t.payload.currency)}/mo` : ""} <span class="mute">${new Date(t.created_at).toLocaleTimeString()}</span></div>`).join("")}</div>
@@ -81,7 +117,7 @@ document.getElementById("simform").addEventListener("submit", async ev => {
     radar();
   } catch (e) { out.innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 });
-proposal(); radar();
+brief(); proposal(); radar();
 </script>
 </body>
 </html>

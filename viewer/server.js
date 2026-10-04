@@ -16,6 +16,11 @@ const token = async () =>
 const routes = {
   "GET /api/proposal": async () =>
     (await one("select nebula.fn_public_proposal($1) as r", [await token()])).r,
+  "GET /api/brief": async () =>
+    one(`select b.code, b.transcript, b.summary, b.needs, b.objections, b.wow_moments,
+                b.buying_signals, b.open_questions, o.company_name
+           from nebula.meeting_brief b join nebula.opportunity o on o.id = b.opportunity_id
+          order by b.created_at limit 1`),
   "GET /api/facts": async () => all("select * from nebula.fn_product_facts('FF')"),
   "GET /api/radar": async () => ({
     proposals: await all("select * from nebula.v_proposal_signals"),
