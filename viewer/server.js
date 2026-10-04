@@ -6,7 +6,7 @@ import pg from "pg";
 
 const pool = new pg.Pool({ connectionString: process.env.DEMO_DATABASE_URL, max: 4 });
 const PORT = process.env.PORT || 3000;
-const html = await readFile(new URL("./index.html", import.meta.url), "utf8");
+const html = await readFile(new URL("./public/index.html", import.meta.url), "utf8");
 
 const one = async (sql, params = []) => (await pool.query(sql, params)).rows[0];
 const all = async (sql) => (await pool.query(sql)).rows;
