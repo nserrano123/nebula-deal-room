@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nebula Demo</title>
+<style>
+  :root { --bg:#f7f7f5; --card:#fff; --ink:#1b1b1f; --mute:#6b6b76; --line:#e6e6ea; --accent:#4b3df2; --ok:#12805c; --warn:#b45309; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111114; --card:#1a1a1f; --ink:#f0f0f3; --mute:#9a9aa6; --line:#2b2b33; --accent:#8b82ff; --ok:#34d399; --warn:#fbbf24; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui, sans-serif; }
+  main { max-width:960px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { font-size:22px; margin:0 0 2px; } .sub { color:var(--mute); margin:0 0 20px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--mute); margin:0 0 12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:16px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; } th,td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--mute); font-weight:500; } td.n, th.n { text-align:right; font-variant-numeric:tabular-nums; }
+  .big { font-size:30px; font-weight:650; font-variant-numeric:tabular-nums; } .row { display:flex; gap:24px; flex-wrap:wrap; }
+  .flag { color:var(--warn); font-size:13px; margin-top:6px; } .pill { display:inline-block; font-size:12px; padding:2px 8px; border-radius:99px; border:1px solid var(--line); color:var(--mute); }
+  .pill.out { color:var(--warn); border-color:var(--warn); } .pill.in { color:var(--ok); border-color:var(--ok); }
+  input { font:inherit; padding:8px 10px; width:120px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); }
+  button { font:inherit; padding:8px 14px; border:0; border-radius:8px; background:var(--accent); color:#fff; cursor:pointer; }
+  .narr { white-space:pre-wrap; } .err { color:var(--warn); } .mute { color:var(--mute); }
+  .tl { font-size:14px; } .tl div { padding:6px 0; border-bottom:1px solid var(--line); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Nebula <span class="mute">demo</span></h1>
+  <p class="sub">Read from a disposable Neon branch. Prices and facts come from Postgres, not from a model.</p>
+  <div id="proposal" class="card"><h2>Proposal</h2>Loading…</div>
+  <div class="card">
+    <h2>What if we're more users?</h2>
+    <p class="mute" style="margin-top:0">Simulation only. The official proposal does not change.</p>
+    <form id="simform" class="row" style="align-items:center;gap:10px">
+      <input id="users" type="number" min="1" value="40" aria-label="Number of users"> <button>Simulate</button>
+    </form>
+    <div id="simout" style="margin-top:14px"></div>
+  </div>
+  <div id="radar" class="card"><h2>Deal radar</h2>Loading…</div>
+</main>
+<script>
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const money = (n, cur) => new Intl.NumberFormat("en-US",{style:"currency",currency:cur||"USD",maximumFractionDigits:0}).format(n);
+const get = async u => { const r = await fetch(u); const j = await r.json(); if (!r.ok) throw new Error(j.error); return j; };
+
+async function proposal() {
+  const el = document.getElementById("proposal");
+  try {
+    const p = await get("/api/proposal"), q = p.quote;
+    const tot = q.totals.map(t => `<div><div class="mute">${esc(t.recurrence_label)}</div><div class="big">${money(t.total,t.currency)}</div></div>`).join("");
+    el.innerHTML = `<h2>Proposal ${esc(p.proposal_code)} · ${esc(p.company_name)} <span class="pill">${esc(p.status_label)}</span></h2>
+      <div class="row" style="margin-bottom:12px">${tot}</div>
+      <table><tr><th>Item</th><th class="n">Qty</th><th class="n">Unit</th><th class="n">Subtotal</th><th></th></tr>
+      ${q.lines.map(l => `<tr><td>${esc(l.concept_name)}<div class="mute">${esc(l.note)}</div></td><td class="n">${l.quantity}</td><td class="n">${money(l.unit_price,l.currency)}</td><td class="n">${money(l.subtotal,l.currency)}</td><td><span class="pill">${esc(l.recurrence_label)}</span></td></tr>`).join("")}</table>
+      ${(q.flags||[]).map(f => `<div class="flag">⚑ ${esc(f.message)}</div>`).join("")}
+      ${p.narrative ? `<h2 style="margin-top:16px">Narrative</h2><div class="narr">${esc(p.narrative)}</div>` : ""}`;
+  } catch (e) { el.innerHTML = `<h2>Proposal</h2><div class="err">${esc(e.message)}</div>`; }
+}
+
+async function radar() {
+  const el = document.getElementById("radar");
+  try {
+    const r = await get("/api/radar"), p = r.proposals[0];
+    const head = p ? `<div class="row" style="margin-bottom:12px">${[["Opens",p.opens],["Viewers",p.distinct_viewers],["Not in meeting",p.viewers_not_in_meeting],["Questions",p.questions],["Simulations",p.simulations],["Escalations",p.escalations]].map(([k,v]) => `<div><div class="mute">${k}</div><div class="big">${v}</div></div>`).join("")}</div>` : "";
+    el.innerHTML = `<h2>Deal radar</h2>${head}
+      <table><tr><th>Who</th><th>Role</th><th></th><th class="n">Opens</th><th class="n">Questions</th></tr>
+      ${r.stakeholders.map(s => `<tr><td>${esc(s.stakeholder_name)}<div class="mute">${esc(s.title)}</div></td><td>${esc(s.role_category_label)}</td><td><span class="pill ${s.attended_meeting?"in":"out"}">${esc(s.attended_meeting_label)}</span></td><td class="n">${s.opens}</td><td class="n">${s.questions}</td></tr>`).join("")}</table>
+      <h2 style="margin-top:18px">Timeline</h2><div class="tl">${r.timeline.map(t => `<div><b>${esc(t.stakeholder_name)}</b> · ${esc(t.event_type_label)}${t.payload && t.payload.question ? ` — “${esc(t.payload.question)}”` : ""}${t.payload && t.payload.monthly_total ? ` — ${money(t.payload.monthly_total,t.payload.currency)}/mo` : ""} <span class="mute">${new Date(t.created_at).toLocaleTimeString()}</span></div>`).join("")}</div>
+      ${r.learning.length ? `<h2 style="margin-top:18px">Learning</h2><div class="tl">${r.learning.map(l => `<div>${esc(l.outcome_label)} · ${esc(l.signal_kind_label)}: ${esc(l.signal)} <span class="mute">(${esc(l.company_name)})</span></div>`).join("")}</div>` : ""}`;
+  } catch (e) { el.innerHTML = `<h2>Deal radar</h2><div class="err">${esc(e.message)}</div>`; }
+}
+
+document.getElementById("simform").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const out = document.getElementById("simout");
+  try {
+    const r = await (await fetch("/api/simulate", { method:"POST", body: JSON.stringify({ users: document.getElementById("users").value }) })).json();
+    if (r.error) throw new Error(r.error);
+    out.innerHTML = `<div class="row"><div><div class="mute">Now</div><div class="big">${money(r.monthly_original,r.currency)}</div></div><div><div class="mute">Simulated</div><div class="big">${money(r.monthly_simulated,r.currency)}</div></div><div><div class="mute">Difference</div><div class="big">${r.monthly_delta>=0?"+":""}${money(r.monthly_delta,r.currency)}</div></div></div><p class="mute">${esc(r.message)}</p>`;
+    radar();
+  } catch (e) { out.innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+});
+proposal(); radar();
+</script>
+</body>
+</html>
