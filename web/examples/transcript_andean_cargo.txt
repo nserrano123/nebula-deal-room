@@ -1,0 +1,26 @@
+Meeting: Fail Fast / Andean Cargo S.A.S. (fictitious company for the demo)
+Participants: Natalia Serrano (Fail Fast), Laura Méndez (Finance Director, Andean Cargo), Andrés Rojo (Head of Operations, Andean Cargo)
+Duration: 42 minutes
+
+[00:00] Natalia: Good morning, Laura, Andrés. Thanks for making the time. How are you operating today?
+[00:35] Laura: We're a freight company with about 60 trucks, our own and third-party. Accounting runs in one system, operations in another, and we match everything by hand in Excel.
+[01:20] Andrés: And we invoice in a third system. Every month-end close is a headache.
+[01:45] Natalia: How many people would use the system?
+[01:52] Laura: Across accounting, treasury, operations and billing, about 25 people.
+[02:10] Natalia: One legal entity?
+[02:15] Laura: Two. We have a separate company for the trucks we own.
+[05:40] Natalia: Let me show you treasury. This is the bank statement for the month; the agent reconciles it on its own and only leaves for review what it couldn't match.
+[06:30] Laura: It does that by itself? We have one person spending three days a month on reconciliation.
+[06:45] Natalia: Exactly. That person moves to reviewing exceptions instead of matching line by line.
+[12:10] Natalia: Now e-invoicing. Fail Fast is an authorized e-invoicing provider for the tax authority, so the invoice goes out straight from the system, from the delivery note.
+[12:50] Andrés: That would get rid of our third system. That would save us a lot of time.
+[18:30] Laura: One concern: we can't stop operations to switch systems. How long does implementation take?
+[18:45] Natalia: Usually three to four months, and it runs in parallel with the operation; nothing stops.
+[19:10] Laura: Good. That reassures me.
+[24:00] Andrés: Do you have projected cash flow? We need it for the board.
+[24:15] Natalia: Not today; I'll look into it and get back to you.
+[30:20] Laura: We're also interested in payroll. We're around 180 employees, but I need to confirm the exact number with HR.
+[31:00] Natalia: Perfect. Payroll is priced per employee processed.
+[38:40] Laura: And when could we start if we decide this month?
+[39:00] Natalia: I'll send you the proposal today with the quote and the implementation plan.
+[41:30] Laura: Great. I'll review it with our general manager.

@@ -31,9 +31,9 @@ Nebula turns your meeting into a living proposal.
 | Agent | Mastra + Claude | Deal brief, proposal writer, room host, deal radar |
 | Data | Neon Postgres | Pricing rules, product facts, deal memory, stakeholders, signals |
 | Customer | assistant-ui | Proposal room chat |
-| Email | AgentMail | Sends the proposal, receives replies |
-| Research | Exa | Company context (stretch) |
-| Deploy | Fly.io | Hosting |
+| App | Next.js (`web/`) | Owner console and API routes; Mastra runs in-process |
+| Database driver | `@neondatabase/serverless` | One HTTPS request per query, fits Vercel functions |
+| Deploy | Vercel | Hosting, with the Neon integration for `DATABASE_URL` |
 
 ## Repository
 
@@ -45,6 +45,18 @@ Nebula turns your meeting into a living proposal.
 | `sql/04_test_demo_flow.sql` | End-to-end test of the demo script. |
 | `prompts/` | The four agent tasks: deal brief, proposal writer, room host, deal radar. |
 | `examples/` | Two fictitious meeting transcripts. |
+| `web/` | The Nebula app (Next.js + Mastra + Claude). `src/lib/deal-brief-flow.ts` turns a transcript into a saved brief; `src/mastra/` holds the agents. |
+
+## Run the app
+
+```bash
+cd web
+cp .env.example .env.local   # set DATABASE_URL (pooled, Neon branch) and ANTHROPIC_API_KEY
+npm install
+npm run dev                  # http://localhost:3000
+```
+
+The deal brief flow: Claude extracts the brief with a typed schema, code checks every quote word for word against the transcript (unmatched quotes are flagged in the UI), and one SQL statement creates the opportunity and saves the brief through `fn_save_brief`. If Postgres rejects the brief (for example, an unknown module), the error goes back to the model for one retry; nothing is left half-saved.
 
 ## Load into Neon
 

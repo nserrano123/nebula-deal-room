@@ -1,0 +1,18 @@
+Meeting: Fail Fast / Pacific Freight Partners (fictitious company for the demo)
+Participants: Natalia Serrano (Fail Fast), Mark Chen (CFO, Pacific Freight Partners)
+Duration: 30 minutes
+
+[00:00] Natalia: Thanks for your time, Mark. How do you run finance and operations today?
+[00:30] Mark: We have 12 people across accounting, billing and dispatch. Accounting is in one tool, dispatch in another, and we reconcile everything in spreadsheets.
+[01:15] Natalia: One legal entity?
+[01:18] Mark: Just one.
+[04:00] Natalia: Let me show you treasury. The agent reconciles the bank statement by itself and only flags what it couldn't match.
+[04:40] Mark: Wait, it does that on its own? My team spends days on that every month.
+[10:30] Natalia: And supplier invoices arrive from the inbox, get booked automatically and matched against the purchase order.
+[11:10] Mark: That's the part that kills us at month end.
+[15:00] Mark: My concern is the rollout. We can't stop operations.
+[15:20] Natalia: It runs in parallel with your operation; a typical implementation takes three to four months.
+[15:45] Mark: Okay, that helps.
+[20:00] Mark: Do you have projected cash flow?
+[20:10] Natalia: Not today. I'll come back to you on that.
+[27:00] Mark: Send me a proposal. If the numbers work, I'll take it to our CEO, Sarah, next week. She'll want to know how fast we see results.
