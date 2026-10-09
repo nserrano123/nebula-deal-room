@@ -80,7 +80,7 @@ export function roomTools(c: RoomContext) {
       inputSchema: z.object({ question: z.string(), answer_fact: z.string().nullable() }),
       execute: async ({ question, answer_fact }) =>
         track("log_question", () =>
-          roomCall("fn_log_event", [c.token, "QU", c.stakeholder_code, JSON.stringify({ question, answer_fact })], ["text", "char", "text", "jsonb"]),
+          roomCall("fn_log_event", [c.token, "QU", c.stakeholder_code, JSON.stringify({ question, answer_fact })], ["text", "char(2)", "text", "jsonb"]),
         ),
     }),
     escalate: createTool({
@@ -89,7 +89,7 @@ export function roomTools(c: RoomContext) {
       inputSchema: z.object({ reason: z.string() }),
       execute: async ({ reason }) =>
         track("escalate", () =>
-          roomCall("fn_log_event", [c.token, "ES", c.stakeholder_code, JSON.stringify({ reason })], ["text", "char", "text", "jsonb"]),
+          roomCall("fn_log_event", [c.token, "ES", c.stakeholder_code, JSON.stringify({ reason })], ["text", "char(2)", "text", "jsonb"]),
         ),
     }),
   };
