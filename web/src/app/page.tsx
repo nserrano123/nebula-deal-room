@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { OwnerGate } from "@/components/owner-session";
 import { COMPLEXITY_LABELS, ROLE_LABELS, type Brief, type SavedBrief } from "@/lib/brief-schema";
 
 type Catalog = {
@@ -21,7 +22,7 @@ export default function Console() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
-  const [key, setKey] = useState("");
+  const key = ""; // owner auth travels in an httpOnly cookie
   const [docUrl, setDocUrl] = useState("");
   const [importing, setImporting] = useState(false);
   const [imported, setImported] = useState<string | null>(null);
@@ -47,12 +48,6 @@ export default function Console() {
       setImporting(false);
     }
   }
-
-  useEffect(() => {
-    let k = new URLSearchParams(window.location.search).get("key") ?? "";
-    try { k = k || sessionStorage.getItem("nebula-key") || ""; } catch {}
-    setKey(k);
-  }, []);
 
   useEffect(() => {
     fetch("/api/catalog")
@@ -109,14 +104,7 @@ export default function Console() {
         )}
       </header>
 
-      <div className="mb-6 flex flex-wrap items-center gap-2 text-sm">
-        <span className="text-muted">Owner key</span>
-        <input type="password" value={key} placeholder="SHIELD_ADMIN_KEY"
-          onChange={(e) => { setKey(e.target.value); try { sessionStorage.setItem("nebula-key", e.target.value); } catch {} }}
-          className="w-64 rounded-lg border border-line bg-card px-3 py-1.5 outline-none focus:border-accent" />
-        {!key && <span className="text-warn">Required to import, extract and send.</span>}
-      </div>
-
+      <OwnerGate>
       <div className="grid gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
         <section className="space-y-4">
           {catalog && catalog.examples.length > 0 && (
@@ -189,7 +177,7 @@ export default function Console() {
 
           <button
             onClick={submit}
-            disabled={busy || !catalog || !key || !transcript.trim()}
+            disabled={busy || !catalog || !transcript.trim()}
             className="w-full rounded-lg bg-accent px-4 py-3 font-medium text-white transition disabled:opacity-40"
           >
             {busy ? "Reading the meeting…" : "Extract deal brief"}
@@ -209,6 +197,7 @@ export default function Console() {
           {result && catalog && <ProposalStep result={result} ownerName={catalog.tenant.owner_name} adminKey={key} />}
         </section>
       </div>
+      </OwnerGate>
     </main>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { OwnerGate } from "@/components/owner-session";
 
 type Stats = {
   clickhouse: boolean;
@@ -30,17 +31,25 @@ const fmt = (n: number) => n.toLocaleString("en-US");
 const SEV = { critical: "bg-bad text-white", high: "bg-warn text-white", medium: "bg-warn-soft text-warn" } as Record<string, string>;
 
 export default function Shield() {
+  return (
+    <main className="mx-auto max-w-6xl px-4 py-8 sm:px-8">
+      <OwnerGate>
+        <ShieldDashboard />
+      </OwnerGate>
+    </main>
+  );
+}
+
+function ShieldDashboard() {
   const [s, setS] = useState<Stats | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [attack, setAttack] = useState<AttackRun | null>(null);
   const [det, setDet] = useState<DetectRun | null>(null);
 
-  const [key, setKey] = useState("");
-  useEffect(() => setKey(new URLSearchParams(window.location.search).get("key") ?? ""), []);
+  const [key] = useState(""); // owner auth travels in an httpOnly cookie
 
   const load = useCallback(async () => {
-    if (!key) return;
     const r = await fetch("/api/shield/stats", { cache: "no-store", headers: { "x-shield-key": key } });
     setS(await r.json());
   }, [key]);
@@ -71,7 +80,7 @@ export default function Shield() {
   const peak = Math.max(1, ...(s?.timeline ?? []).map((m) => m.legit + m.attacks));
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 sm:px-8">
+    <div>
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-line pb-6">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Nebula Shield</p>
@@ -102,7 +111,6 @@ export default function Shield() {
         </button>
       </section>
       {s?.error && <p className="mb-6 rounded-lg border border-bad/30 bg-bad/5 px-4 py-2 text-sm text-bad">{s.error}</p>}
-      {!key && <p className="mb-6 rounded-lg bg-warn-soft px-4 py-2 text-sm text-warn">Open this page as /shield?key=YOUR_SHIELD_ADMIN_KEY.</p>}
       {note && <p className="mb-6 rounded-lg bg-accent-soft px-4 py-2 text-sm text-accent">{note}</p>}
 
       <section className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -199,7 +207,7 @@ export default function Shield() {
           </ul>
         </Card>
       </div>
-    </main>
+    </div>
   );
 }
 
