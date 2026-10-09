@@ -123,3 +123,21 @@ Placeholders marked `[CONFIRM]` in `sql/03_seed_fail_fast.sql`: implementation h
 | 14:45–15:30 | Stakeholder signals view; Deal radar if time allows |
 | 15:30–16:15 | Record backup video, README, description |
 | 16:15–16:30 | Submit |
+
+## Nebula Shield (Cyberdefense Hackathon · SF Tech Week, Oct 9 2026)
+
+The proposal room is an AI agent that anyone at the buyer's company can talk to: an attack surface. Nebula Shield defends it in layers and watches it in ClickHouse.
+
+| Layer | Where | What it stops |
+|---|---|---|
+| Least privilege | Postgres role `nebula_room` (`sql/05_shield.sql`) | The room can only EXECUTE five room functions. No table reads, no other customer, no raw SQL. |
+| Token from the URL, never from the model | `web/src/lib/room-db.ts` | The agent cannot switch to another customer's room. |
+| Signed session | `web/src/lib/room-turn.ts` | A visitor cannot edit their own context to inject instructions. |
+| Hardened instructions | `web/src/mastra/agents/room-host.ts` | Prompt injection, fake owner approval, discount pressure. |
+| Output guard | `web/src/lib/guard.ts` | Another customer's name or a secret never leaves the room. |
+| Detection | ClickHouse SQL over every room event (`web/src/lib/clickhouse.ts`) | Link guessing, injection bursts, discount squeezes, cross-customer probing, output leaks. |
+| Remediation | `fn_revoke_token` in Postgres | A detected attack revokes the proposal link everywhere. |
+
+Dashboard: `/shield`. Demo flow: simulate 1M room events inside ClickHouse → run the live red team (9 real attacks against the real agent + 12 guessed links) → detect and remediate (the attacked link is revoked in Postgres and the room refuses it).
+
+Setup: run `sql/05_shield.sql` and `sql/06_shield_demo_seed.sql`, then set `CLICKHOUSE_URL` (`https://<host>:8443`), `CLICKHOUSE_USER` and `CLICKHOUSE_PASSWORD`.
