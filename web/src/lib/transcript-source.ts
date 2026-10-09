@@ -16,8 +16,15 @@ export function parseDocLink(url: string): { id: string; tab: string | null } {
 
 async function exportDoc(id: string, tab: string | null): Promise<string | null> {
   const url = `https://docs.google.com/document/d/${id}/export?format=txt${tab ? `&tab=${tab}` : ""}`;
-  const r = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(20_000) });
-  // A private doc answers with a redirect to the Google sign-in page.
+  let r = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(20_000) });
+  // A shared doc redirects once to Google's download host; a private one redirects to the sign-in page.
+  if (r.status >= 300 && r.status < 400) {
+    const next = r.headers.get("location");
+    if (!next) return null;
+    const host = new URL(next, url).hostname;
+    if (!host.endsWith(".googleusercontent.com")) return null;
+    r = await fetch(new URL(next, url), { redirect: "manual", signal: AbortSignal.timeout(20_000) });
+  }
   if (r.status !== 200) return null;
   const type = r.headers.get("content-type") ?? "";
   if (!type.includes("text/plain")) return null;
