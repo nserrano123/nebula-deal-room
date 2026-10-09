@@ -20,7 +20,7 @@ const RULES: { cls: Exclude<AttackClass, "">; patterns: RegExp[] }[] = [
     patterns: [
       /(other|another|different) (customer|client|company|companies|deal|proposal)s?/i,
       /(competitor|competition).{0,30}(price|pricing|deal|proposal|paying)/i,
-      /what (did|does|do|are) .{0,40} (pay|paying|get|getting)/i,
+      /what (is|are|did|does|do) .{0,40} (pay|paying|get|getting|charged)/i,
       /(list|show).{0,20}(all|every) (customers|clients|proposals|deals)/i,
     ],
   },

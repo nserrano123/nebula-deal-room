@@ -76,7 +76,11 @@ export async function roomTurn(
 ): Promise<TurnResult> {
   const t0 = Date.now();
   const last = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
-  const attack = classifyInput(last);
+  const others = await otherCompanies(b.token);
+  const coreName = (n: string) => n.replace(/\b(S\.?A\.?S\.?|Inc\.?|LLC|Ltd\.?|Partners)\b/gi, "").trim().toLowerCase();
+  const named = others.filter((n) => coreName(n).length >= 4 && last.toLowerCase().includes(coreName(n)));
+  // Naming another customer of this seller is the strongest cross-customer signal there is.
+  const attack = named.length > 0 ? "cross_tenant" : classifyInput(last);
   const proposalCode = String(ctx.proposal.proposal_code);
   const ev = base(b, proposalCode);
   const tools: { tool: string; ok: boolean }[] = [];
@@ -94,7 +98,8 @@ export async function roomTurn(
     },
     messages.slice(-12),
   );
-  const { text, leaked } = checkOutput(raw, await otherCompanies(b.token));
+  // A refusal that repeats a name the visitor typed is not a leak; any other customer name is.
+  const { text, leaked } = checkOutput(raw, others.filter((n) => !named.includes(n)));
   const verdict = leaked.length > 0 ? "leak_blocked" : attack ? "blocked" : "allowed";
   const latency = Date.now() - t0;
 
