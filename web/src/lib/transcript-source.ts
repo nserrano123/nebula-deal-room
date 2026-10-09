@@ -4,7 +4,11 @@
 
 const DOC_ID = /docs\.google\.com\/document\/d\/([a-zA-Z0-9_-]{20,})/;
 const TAB_ID = /[?&#]tab=(t\.[a-zA-Z0-9_-]+)/;
-const TRANSCRIPT_MARKERS = [/^#*\s*\**\s*📖?\s*Transcripci[oó]n\**\s*$/im, /^#*\s*\**\s*📖?\s*Transcript\**\s*$/im];
+const TRANSCRIPT_MARKERS = [
+  /^#*\s*\**\s*📖?\s*Transcripci[oó]n\**\s*$/im,
+  /^#*\s*\**\s*📖?\s*Transcript\**\s*$/im,
+  /^.{0,120}\s-\s(Transcripci[oó]n|Transcript)\**\s*$/im, // "FW Cargo - Fail Fast - Transcripción"
+];
 
 export class TranscriptImportError extends Error {}
 
