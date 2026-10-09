@@ -23,7 +23,7 @@ function ch(): ClickHouseClient {
     username: process.env.CLICKHOUSE_USER ?? process.env.CLICKHOUSE_USERNAME ?? "default",
     password: process.env.CLICKHOUSE_PASSWORD,
     request_timeout: 60_000,
-    clickhouse_settings: { async_insert: 1, wait_for_async_insert: 1 },
+    clickhouse_settings: { async_insert: 1, wait_for_async_insert: 0 },
   });
   return client;
 }
@@ -102,17 +102,44 @@ export async function ensureSchema(): Promise<void> {
   });
 }
 
+let schemaReady: Promise<void> | undefined;
+
+const withTimeout = <T>(p: Promise<T>, ms: number, what: string) =>
+  Promise.race([p, new Promise<never>((_, rej) => setTimeout(() => rej(new Error(`${what} timed out after ${ms} ms`)), ms))]);
+
+/** Writes room events. Never throws and never waits more than a few seconds: logging must not hold up the room. */
 export async function logEvents(events: RoomEvent[]): Promise<void> {
   if (!clickhouseConfigured() || events.length === 0) return;
   try {
-    await ch().insert({
-      table: `${DB}.room_events`,
-      values: events.map((e) => ({ ...e, text: (e.text ?? "").slice(0, 2000) })),
-      format: "JSONEachRow",
+    schemaReady ??= ensureSchema().catch((e) => {
+      schemaReady = undefined;
+      throw e;
     });
+    await withTimeout(schemaReady, 8_000, "ClickHouse schema check");
+    await withTimeout(
+      ch().insert({
+        table: `${DB}.room_events`,
+        values: events.map((e) => ({ ...e, text: (e.text ?? "").slice(0, 2000) })),
+        format: "JSONEachRow",
+      }),
+      8_000,
+      "ClickHouse insert",
+    );
   } catch (e) {
-    // Logging must never break the customer's room.
     console.error("[clickhouse] insert failed", e);
+  }
+}
+
+/** Connectivity check for /api/health. */
+export async function ping(): Promise<{ ok: boolean; ms: number; error?: string }> {
+  const t0 = performance.now();
+  if (!clickhouseConfigured()) return { ok: false, ms: 0, error: "Not configured" };
+  try {
+    const rs = await withTimeout(ch().query({ query: "SELECT 1 AS ok", format: "JSONEachRow" }), 25_000, "ClickHouse ping");
+    await rs.json();
+    return { ok: true, ms: Math.round(performance.now() - t0) };
+  } catch (e) {
+    return { ok: false, ms: Math.round(performance.now() - t0), error: (e as Error).message.slice(0, 300) };
   }
 }
 

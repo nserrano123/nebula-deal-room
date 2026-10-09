@@ -1,5 +1,6 @@
 // One turn in a proposal room, with every layer of Nebula Shield around the agent.
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { after } from "next/server";
 import { runRoomTurn } from "@/mastra/agents/room-host";
 import { ATTACK_LABELS, VERDICT_LABELS, logEvents, type RoomEvent } from "./clickhouse";
 import { NebulaError, TENANT_CODE } from "./db";
@@ -21,6 +22,9 @@ export function verify(data: unknown, sig: string): boolean {
   return expected.length === given.length && timingSafeEqual(expected, given);
 }
 
+// Runs after the response is sent, so the visitor never waits on analytics.
+const later = (events: RoomEvent[]) => after(() => logEvents(events));
+
 type Base = { token: string; visitor_id: string; visitor_name: string; channel: "live" | "simulated" };
 
 function base(b: Base, proposal_code: string): Omit<RoomEvent, "kind" | "verdict"> {
@@ -41,7 +45,7 @@ export async function openRoom(b: Base) {
     const proposal = await roomCall<Record<string, unknown>>("fn_public_proposal", [b.token]);
     return { proposal };
   } catch (e) {
-    await logEvents([{ ...base(b, ""), kind: "join_failed", attack_class: "token_probe", verdict: "blocked", latency_ms: Date.now() - t0, text: (e as Error).message }]);
+    later([{ ...base(b, ""), kind: "join_failed", attack_class: "token_probe", verdict: "blocked", latency_ms: Date.now() - t0, text: (e as Error).message }]);
     throw e;
   }
 }
@@ -53,7 +57,7 @@ export async function joinRoom(b: Base, who: { name: string; email?: string | nu
     [b.token, who.name, who.email || null, who.title || null, who.role || "OT"],
     ["text", "text", "text", "text", "char(2)"],
   );
-  await logEvents([{ ...base(b, String(proposal.proposal_code)), kind: "join", verdict: "allowed", text: `${who.name} joined` }]);
+  later([{ ...base(b, String(proposal.proposal_code)), kind: "join", verdict: "allowed", text: `${who.name} joined` }]);
   const ctx = { proposal, person };
   return { ...ctx, sig: sign(ctx) };
 }
@@ -103,7 +107,7 @@ export async function roomTurn(
   const verdict = leaked.length > 0 ? "leak_blocked" : attack ? "blocked" : "allowed";
   const latency = Date.now() - t0;
 
-  await logEvents([
+  later([
     { ...ev, kind: "message", attack_class: attack, verdict: attack ? "blocked" : "allowed", text: last },
     ...tools.map((t) => ({ ...ev, kind: "tool_call" as const, tool: t.tool, verdict: t.ok ? ("allowed" as const) : ("blocked" as const) })),
     { ...ev, kind: "response", attack_class: attack, verdict, latency_ms: latency, text },
