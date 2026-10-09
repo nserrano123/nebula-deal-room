@@ -22,6 +22,31 @@ export default function Console() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const [key, setKey] = useState("");
+  const [docUrl, setDocUrl] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [imported, setImported] = useState<string | null>(null);
+
+  async function importDoc() {
+    setImporting(true);
+    setError(null);
+    setImported(null);
+    try {
+      const r = await fetch("/api/transcript", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-shield-key": key },
+        body: JSON.stringify({ url: docUrl }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setTranscript(d.transcript);
+      if (d.title && !company) setCompany(String(d.title).split(/\s+-\s+/)[0]);
+      setImported(`Imported ${Number(d.chars).toLocaleString("en-US")} characters of transcript.`);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setImporting(false);
+    }
+  }
 
   useEffect(() => {
     setKey(new URLSearchParams(window.location.search).get("key") ?? "");
@@ -132,6 +157,19 @@ export default function Console() {
               ))}
             </select>
           </label>
+
+          <div>
+            <span className="text-sm font-medium">Google Docs link (Gemini meeting notes)</span>
+            <div className="mt-1 flex gap-2">
+              <input value={docUrl} onChange={(e) => setDocUrl(e.target.value)} placeholder="https://docs.google.com/document/d/…"
+                className="min-w-0 flex-1 rounded-lg border border-line bg-card px-3 py-2 text-sm outline-none focus:border-accent" />
+              <button onClick={importDoc} disabled={importing || !docUrl.trim()}
+                className="rounded-lg border border-accent px-3 py-2 text-sm text-accent disabled:opacity-40">
+                {importing ? "Reading…" : "Import"}
+              </button>
+            </div>
+            {imported && <p className="mt-1 text-xs text-good">{imported}</p>}
+          </div>
 
           <label className="block">
             <span className="text-sm font-medium">Meeting transcript</span>
