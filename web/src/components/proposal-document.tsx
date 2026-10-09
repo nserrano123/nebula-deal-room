@@ -49,7 +49,7 @@ const T = {
     tierNote: (a: number, b: string, d: number) => `Tramo de ${a} a ${b} usuarios: ${d} % de descuento por volumen.`,
     perVehicle: (v: string, n: number) => `Equivale a ${v} por vehículo al mes (${n} vehículos).`,
     lic: "Usuarios Full · todos los módulos incluidos", ent: "Empresa adicional", impl: "Implementación y capacitación",
-    implW: "Descuento por permanencia", emp: "por empleado", M: "Mensual", O: "Única vez", from: "De", footer: "Propuesta válida por 30 días calendario desde su emisión.",
+    implW: "Descuento por permanencia", emp: "por empleado", perMonth: "mes", M: "Mensual", O: "Única vez", from: "De", footer: "Propuesta válida por 30 días calendario desde su emisión.",
   },
   en: {
     eyebrow: "Commercial proposal", preparedFor: "Prepared for", issued: "Issued", validity: "Valid for",
@@ -67,13 +67,13 @@ const T = {
     tierNote: (a: number, b: string, d: number) => `${a}–${b} user tier: ${d}% volume discount.`,
     perVehicle: (v: string, n: number) => `That is ${v} per vehicle per month (${n} vehicles).`,
     lic: "Full users · all modules included", ent: "Additional legal entity", impl: "Implementation and training",
-    implW: "Commitment discount", emp: "per employee", M: "Monthly", O: "One-time", from: "From", footer: "This proposal is valid for 30 calendar days from issue.",
+    implW: "Commitment discount", emp: "per employee", perMonth: "month", M: "Monthly", O: "One-time", from: "From", footer: "This proposal is valid for 30 calendar days from issue.",
   },
 };
 
 export function money(n: number, cur: string, lang: Lang) {
-  const v = Number(n).toLocaleString(lang === "es" ? "es-CO" : "en-US", { maximumFractionDigits: 2 });
-  return `${cur} ${v}`;
+  const v = Math.abs(Number(n)).toLocaleString(lang === "es" ? "es-CO" : "en-US", { maximumFractionDigits: 2 });
+  return `${Number(n) < 0 ? "– " : ""}${cur} ${v}`;
 }
 
 function concept(l: Quote["lines"][number], t: (typeof T)[Lang]) {
@@ -186,8 +186,8 @@ export function ProposalDocument({ doc, lang: forced }: { doc: ProposalDoc; lang
             <table className="w-full min-w-[520px] text-sm">
               <thead>
                 <tr className="border-b-2 border-ink text-left text-xs uppercase tracking-wider text-muted">
-                  <th className="py-2 font-medium">{t.concept}</th><th className="py-2 text-right font-medium">{t.qty}</th>
-                  <th className="py-2 text-right font-medium">{t.unit}</th><th className="py-2 text-right font-medium">{t.subtotal}</th>
+                  <th className="py-2 font-medium">{t.concept}</th><th className="py-2 pl-6 text-right font-medium">{t.qty}</th>
+                  <th className="py-2 pl-6 text-right font-medium">{t.unit}</th><th className="py-2 pl-6 text-right font-medium">{t.subtotal}</th>
                 </tr>
               </thead>
               <tbody>
@@ -200,9 +200,9 @@ export function ProposalDocument({ doc, lang: forced }: { doc: ProposalDoc; lang
                         {l.concept_code === "IMPL-WAIVED" && q.commitment_months ? ` · ${t.commitment(q.commitment_months)}` : ""}
                       </span>
                     </td>
-                    <td className="py-3 text-right font-mono">{l.quantity}</td>
-                    <td className="py-3 text-right font-mono">{fmt(l.unit_price, l.currency)}</td>
-                    <td className="py-3 text-right font-mono">{fmt(l.subtotal, l.currency)}</td>
+                    <td className="whitespace-nowrap py-3 pl-6 text-right font-mono">{l.quantity}</td>
+                    <td className="whitespace-nowrap py-3 pl-6 text-right font-mono">{fmt(l.unit_price, l.currency)}</td>
+                    <td className="whitespace-nowrap py-3 pl-6 text-right font-mono">{fmt(l.subtotal, l.currency)}</td>
                   </tr>
                 ))}
                 {monthly && (
@@ -244,7 +244,7 @@ export function ProposalDocument({ doc, lang: forced }: { doc: ProposalDoc; lang
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-line p-5">
                 <p className="text-sm font-semibold">{t.modeA}</p>
-                <p className="mt-2 font-serif text-2xl">{fmt(q.payment_options.monthly)}<span className="text-sm text-muted"> / {t.M.toLowerCase()}</span></p>
+                <p className="mt-2 font-serif text-2xl">{fmt(q.payment_options.monthly)}<span className="text-sm text-muted"> / {t.perMonth}</span></p>
                 <p className="mt-1 text-sm text-muted">{t.twelve}: {fmt(q.payment_options.twelve_months_monthly)}</p>
               </div>
               <div className="rounded-xl border-2 border-accent p-5">
