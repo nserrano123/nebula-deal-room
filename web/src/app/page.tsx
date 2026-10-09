@@ -49,7 +49,9 @@ export default function Console() {
   }
 
   useEffect(() => {
-    setKey(new URLSearchParams(window.location.search).get("key") ?? "");
+    let k = new URLSearchParams(window.location.search).get("key") ?? "";
+    try { k = k || sessionStorage.getItem("nebula-key") || ""; } catch {}
+    setKey(k);
   }, []);
 
   useEffect(() => {
@@ -58,7 +60,7 @@ export default function Console() {
         const data = await r.json();
         if (!r.ok) throw new Error(data.error);
         setCatalog(data);
-        setPlan(data.plans[0]?.plan_code ?? "");
+        setPlan("");
       })
       .catch((e) => setError(e.message));
   }, []);
@@ -107,11 +109,13 @@ export default function Console() {
         )}
       </header>
 
-      {!key && (
-        <p className="mb-6 rounded-lg bg-warn-soft px-4 py-2 text-sm text-warn">
-          Owner console: open this page as /?key=YOUR_SHIELD_ADMIN_KEY.
-        </p>
-      )}
+      <div className="mb-6 flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-muted">Owner key</span>
+        <input type="password" value={key} placeholder="SHIELD_ADMIN_KEY"
+          onChange={(e) => { setKey(e.target.value); try { sessionStorage.setItem("nebula-key", e.target.value); } catch {} }}
+          className="w-64 rounded-lg border border-line bg-card px-3 py-1.5 outline-none focus:border-accent" />
+        {!key && <span className="text-warn">Required to import, extract and send.</span>}
+      </div>
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
         <section className="space-y-4">
@@ -134,22 +138,23 @@ export default function Console() {
           )}
 
           <label className="block">
-            <span className="text-sm font-medium">Prospect company</span>
+            <span className="text-sm font-medium">Prospect company <span className="font-normal text-muted">(optional: read from the meeting)</span></span>
             <input
               value={company}
               onChange={(e) => setCompany(e.target.value)}
-              placeholder="Andean Cargo S.A.S."
+              placeholder="Detected from the transcript"
               className="mt-1 w-full rounded-lg border border-line bg-card px-3 py-2 outline-none focus:border-accent"
             />
           </label>
 
           <label className="block">
-            <span className="text-sm font-medium">Price plan</span>
+            <span className="text-sm font-medium">Price plan <span className="font-normal text-muted">(optional)</span></span>
             <select
               value={plan}
               onChange={(e) => setPlan(e.target.value)}
               className="mt-1 w-full rounded-lg border border-line bg-card px-3 py-2 outline-none focus:border-accent"
             >
+              <option value="">Auto-detect from the meeting</option>
               {catalog?.plans.map((p) => (
                 <option key={p.plan_code} value={p.plan_code}>
                   {p.plan_code} · {p.plan_name}
@@ -184,7 +189,7 @@ export default function Console() {
 
           <button
             onClick={submit}
-            disabled={busy || !catalog || !company.trim() || !transcript.trim()}
+            disabled={busy || !catalog || !key || !transcript.trim()}
             className="w-full rounded-lg bg-accent px-4 py-3 font-medium text-white transition disabled:opacity-40"
           >
             {busy ? "Reading the meeting…" : "Extract deal brief"}

@@ -19,6 +19,8 @@ const quoted = {
 };
 
 export const briefSchema = z.object({
+  company_name: z.string().describe("The prospect company's name as said in the meeting or the meeting title"),
+  plan_code: z.string().describe("The price plan code that fits the prospect's industry"),
   summary: z.string().describe("2 to 3 sentences about the company and its situation"),
   participants: z.array(
     z.object({
@@ -50,8 +52,8 @@ export const briefSchema = z.object({
 export type Brief = z.infer<typeof briefSchema>;
 
 export const briefRequestSchema = z.object({
-  company: z.string().trim().min(1, "Enter the prospect company name."),
-  plan_code: z.string().trim().min(1, "Choose a price plan."),
+  company: z.string().trim().max(200).optional().default(""),   // empty: detected from the transcript
+  plan_code: z.string().trim().max(10).optional().default(""), // empty: suggested by the model, validated by Postgres
   transcript: z.string().trim().min(200, "Paste the full meeting transcript (at least 200 characters)."),
 });
 

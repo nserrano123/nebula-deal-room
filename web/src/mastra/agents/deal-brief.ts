@@ -17,7 +17,9 @@ Rules:
 6. module_codes may only contain these codes: ${modules}. Include a module only if the customer showed interest in it.
 7. complexity: L (low) for a single company with standard processes; M (medium) for several legal entities or a migration from another system; H (high) for custom integrations, several countries or very high volumes.
 8. Do not calculate prices. Postgres does that.
-9. Write the brief in English, but keep quotes in the language they were spoken.`;
+9. Write the brief in English, but keep quotes in the language they were spoken.
+10. company_name: the prospect's company as named in the meeting or its title (never ${c.tenant.name}).
+11. plan_code: one of ${c.plans.map((p) => `${p.plan_code} (${p.plan_name})`).join(", ")}, the one matching the prospect's industry.`;
 }
 
 export const dealBriefAgent = new Agent({

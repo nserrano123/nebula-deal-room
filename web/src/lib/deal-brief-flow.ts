@@ -64,17 +64,24 @@ export async function saveBrief(
   return row.r;
 }
 
-export async function runDealBrief(input: { company: string; plan_code: string; transcript: string }): Promise<BriefResult> {
+export async function runDealBrief(req: { company?: string; plan_code?: string; transcript: string }): Promise<BriefResult> {
   const catalog = await getCatalog();
   let feedback: string | undefined;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const brief = await extractBrief(catalog, input.transcript, feedback);
+    const brief = await extractBrief(catalog, req.transcript, feedback);
+    // What the owner typed wins; otherwise the model's reading of the meeting. Postgres validates the plan.
+    const input = {
+      company: req.company?.trim() || brief.company_name.trim(),
+      plan_code: req.plan_code?.trim() || brief.plan_code.trim(),
+      transcript: req.transcript,
+    };
     try {
+      if (!input.company) throw new NebulaError("The company name was not found in the meeting. Type it and try again.");
       const saved = await saveBrief(input, brief);
-      return { saved, brief, unverified_quotes: findUnverifiedQuotes(brief, input.transcript), attempts: attempt };
+      return { saved, brief, unverified_quotes: findUnverifiedQuotes(brief, req.transcript), attempts: attempt };
     } catch (e) {
       // Only content problems go back to the model; anything else (plan, connection) stops here.
-      if (!(e instanceof NebulaError) || attempt === MAX_ATTEMPTS || /plan/i.test(e.message)) throw e;
+      if (!(e instanceof NebulaError) || attempt === MAX_ATTEMPTS || /company name/i.test(e.message)) throw e;
       feedback = e.message;
     }
   }
