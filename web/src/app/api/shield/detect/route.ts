@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin";
 import { detect, recordDetections, type Detection } from "@/lib/clickhouse";
 import { liveTokens, revokeToken } from "@/lib/room-db";
 
 export const runtime = "nodejs";
 
 // Detect in ClickHouse, remediate in Postgres.
-export async function POST() {
+export async function POST(req: Request) {
+  const denied = requireAdmin(req);
+  if (denied) return denied;
   try {
     const { detections, ms, scanned } = await detect(15);
     const tokens = new Map((await liveTokens()).map((t) => [t.token_hash, t]));

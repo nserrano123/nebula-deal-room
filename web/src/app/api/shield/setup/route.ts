@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin";
 import { clickhouseConfigured, ensureSchema } from "@/lib/clickhouse";
 
 export const runtime = "nodejs";
 
-export async function POST() {
+export async function POST(req: Request) {
+  const denied = requireAdmin(req);
+  if (denied) return denied;
   if (!clickhouseConfigured()) return NextResponse.json({ error: "ClickHouse is not configured." }, { status: 400 });
   try {
     await ensureSchema();

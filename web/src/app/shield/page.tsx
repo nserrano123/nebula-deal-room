@@ -36,10 +36,14 @@ export default function Shield() {
   const [attack, setAttack] = useState<AttackRun | null>(null);
   const [det, setDet] = useState<DetectRun | null>(null);
 
+  const [key, setKey] = useState("");
+  useEffect(() => setKey(new URLSearchParams(window.location.search).get("key") ?? ""), []);
+
   const load = useCallback(async () => {
-    const r = await fetch("/api/shield/stats", { cache: "no-store" });
+    if (!key) return;
+    const r = await fetch("/api/shield/stats", { cache: "no-store", headers: { "x-shield-key": key } });
     setS(await r.json());
-  }, []);
+  }, [key]);
 
   useEffect(() => {
     load();
@@ -51,7 +55,7 @@ export default function Shield() {
     setBusy(name);
     setNote(null);
     try {
-      const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json", "x-shield-key": key }, body: JSON.stringify(body) });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error);
       done(d as never);
@@ -97,6 +101,8 @@ export default function Shield() {
           Reset demo
         </button>
       </section>
+      {s?.error && <p className="mb-6 rounded-lg border border-bad/30 bg-bad/5 px-4 py-2 text-sm text-bad">{s.error}</p>}
+      {!key && <p className="mb-6 rounded-lg bg-warn-soft px-4 py-2 text-sm text-warn">Open this page as /shield?key=YOUR_SHIELD_ADMIN_KEY.</p>}
       {note && <p className="mb-6 rounded-lg bg-accent-soft px-4 py-2 text-sm text-accent">{note}</p>}
 
       <section className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">

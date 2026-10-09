@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin";
 import { clickhouseConfigured, ensureSchema, stats } from "@/lib/clickhouse";
 import { liveTokens } from "@/lib/room-db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = requireAdmin(req);
+  if (denied) return denied;
   try {
     const rooms = (await liveTokens()).map(({ token, ...r }) => ({ ...r, path: `/room/${token}` }));
     if (!clickhouseConfigured()) return NextResponse.json({ clickhouse: false, rooms });
