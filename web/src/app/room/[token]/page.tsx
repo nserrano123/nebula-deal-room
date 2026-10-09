@@ -1,17 +1,30 @@
 "use client";
 
 import { use, useEffect, useRef, useState } from "react";
+import { ProposalDocument, detectLang, type ProposalDoc } from "@/components/proposal-document";
 
 type Ctx = { proposal: Record<string, unknown>; person: Record<string, unknown> };
 type Msg = { role: "user" | "assistant"; content: string; hidden?: boolean; meta?: { attack_label: string; verdict: string; verdict_label: string } };
 
-const ROLES = [
-  ["EX", "Executive"],
-  ["FI", "Finance"],
-  ["OP", "Operations"],
-  ["IT", "IT"],
-  ["OT", "Other"],
-] as const;
+const ROLES = {
+  es: [["EX", "Dirección / Gerencia"], ["FI", "Finanzas"], ["OP", "Operaciones"], ["IT", "Tecnología"], ["OT", "Otro"]],
+  en: [["EX", "Executive"], ["FI", "Finance"], ["OP", "Operations"], ["IT", "IT"], ["OT", "Other"]],
+} as const;
+
+const L = {
+  es: {
+    room: "Sala de propuesta", pdf: "Descargar PDF", ask: "¿Preguntas sobre la propuesta?",
+    askSub: (o: string) => `Nuestro agente de IA le responde con la información de esta propuesta y le simula otros escenarios. Lo que no sepa, se lo consulta a ${o}.`,
+    name: "Su nombre", email: "Correo (opcional)", title: "Cargo", enter: "Hablar con el agente", opening: "Abriendo…",
+    placeholder: "Escriba su pregunta…", send: "Enviar", ai: "Está hablando con un agente de IA",
+  },
+  en: {
+    room: "Proposal room", pdf: "Download PDF", ask: "Questions about this proposal?",
+    askSub: (o: string) => `Our AI agent answers from this proposal and can simulate other scenarios. Anything it doesn't know goes to ${o}.`,
+    name: "Your name", email: "Email (optional)", title: "Title", enter: "Talk to the agent", opening: "Opening…",
+    placeholder: "Ask about the proposal…", send: "Send", ai: "You are talking to an AI agent",
+  },
+};
 
 export default function Room({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params);
@@ -52,7 +65,7 @@ export default function Room({ params }: { params: Promise<{ token: string }> })
       const d = await r.json();
       if (!r.ok) throw new Error(d.error);
       setJoined({ ctx: { proposal: d.proposal, person: d.person }, sig: d.sig });
-      await send("Hello", { ctx: { proposal: d.proposal, person: d.person }, sig: d.sig }, true);
+      await send(lang === "es" ? "Hola" : "Hello", { ctx: { proposal: d.proposal, person: d.person }, sig: d.sig }, true);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -83,69 +96,76 @@ export default function Room({ params }: { params: Promise<{ token: string }> })
     }
   }
 
+  const lang = proposal ? detectLang(String(proposal.narrative ?? "")) : "en";
+  const t = L[lang];
+  const doc: ProposalDoc | null = proposal
+    ? {
+        proposal_code: String(proposal.proposal_code), company_name: String(proposal.company_name),
+        tenant_name: String(proposal.tenant_name), owner_name: String(proposal.owner_name),
+        narrative: String(proposal.narrative ?? ""), quote: proposal.quote as ProposalDoc["quote"],
+        issued_at: (proposal.sent_at as string | null) ?? null,
+      }
+    : null;
+
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col px-4 py-8 sm:px-8">
-      <header className="mb-6 border-b border-line pb-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Proposal room</p>
-        <h1 className="mt-1 font-serif text-3xl">
-          {proposal ? `${proposal.company_name} · ${proposal.proposal_code}` : "Nebula"}
-        </h1>
-        {proposal && (
-          <p className="mt-1 text-sm text-muted">
-            From {String(proposal.tenant_name)} · {String(proposal.owner_name)} · You are talking to an AI agent
-          </p>
-        )}
-      </header>
+    <main className="mx-auto min-h-screen max-w-3xl px-4 py-8 sm:px-0 print:p-0">
+      <div className="mb-4 flex items-center justify-between text-xs print:hidden">
+        <p className="font-semibold uppercase tracking-[0.2em] text-accent">Nebula · {t.room}</p>
+        {doc && <button onClick={() => window.print()} className="rounded-lg border border-line bg-card px-3 py-1.5 text-muted hover:text-ink">{t.pdf}</button>}
+      </div>
 
-      {error && (
-        <p className="mb-4 rounded-lg border border-bad/30 bg-bad/5 px-4 py-3 text-bad">{error}</p>
-      )}
+      {error && <p className="mb-4 rounded-lg border border-bad/30 bg-bad/5 px-4 py-3 text-bad">{error}</p>}
+      {!doc && !error && <div className="h-96 animate-pulse rounded-2xl bg-card" />}
+      {doc && <ProposalDocument doc={doc} lang={lang} />}
 
-      {proposal && !joined && (
-        <section className="space-y-3 rounded-2xl border border-line bg-card p-6">
-          <p className="leading-relaxed">{String(proposal.narrative ?? "")}</p>
-          <p className="pt-2 text-sm text-muted">Tell us who you are so the agent can brief you for your role.</p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <input className="rounded-lg border border-line px-3 py-2" placeholder="Your name" value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            <input className="rounded-lg border border-line px-3 py-2" placeholder="Email (optional)" value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })} />
-            <input className="rounded-lg border border-line px-3 py-2" placeholder="Title" value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })} />
-            <select className="rounded-lg border border-line px-3 py-2" value={form.role}
-              onChange={(e) => setForm({ ...form, role: e.target.value })}>
-              {ROLES.map(([c, l]) => <option key={c} value={c}>{c} · {l}</option>)}
-            </select>
-          </div>
-          <button onClick={join} disabled={busy || form.name.trim().length < 2}
-            className="rounded-lg bg-accent px-4 py-2 font-medium text-white disabled:opacity-40">
-            {busy ? "Opening…" : "Enter the room"}
-          </button>
-        </section>
-      )}
+      {doc && (
+        <section className="mt-8 rounded-2xl border border-line bg-card p-6 print:hidden">
+          <h2 className="font-serif text-2xl">{t.ask}</h2>
+          <p className="mt-1 text-sm text-muted">{t.askSub(doc.owner_name)}</p>
 
-      {joined && (
-        <>
-          <div className="flex-1 space-y-3">
-            {msgs.map((m, i) => m.hidden ? null : (
-              <div key={i} className={m.role === "user" ? "ml-auto max-w-[85%]" : "max-w-[85%]"}>
-                <div className={`whitespace-pre-wrap rounded-2xl px-4 py-3 leading-relaxed ${m.role === "user" ? "bg-accent text-white" : "border border-line bg-card"}`}>
-                  {m.content}
-                </div>
-                {m.meta && m.meta.verdict !== "allowed" && (
-                  <p className="mt-1 text-xs text-warn">Shield: {m.meta.attack_label || m.meta.verdict_label} · {m.meta.verdict_label}</p>
-                )}
+          {!joined && (
+            <div className="mt-4 space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <input className="rounded-lg border border-line px-3 py-2" placeholder={t.name} value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                <input className="rounded-lg border border-line px-3 py-2" placeholder={t.email} value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                <input className="rounded-lg border border-line px-3 py-2" placeholder={t.title} value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })} />
+                <select className="rounded-lg border border-line px-3 py-2" value={form.role}
+                  onChange={(e) => setForm({ ...form, role: e.target.value })}>
+                  {ROLES[lang].map(([c, l]) => <option key={c} value={c}>{l}</option>)}
+                </select>
               </div>
-            ))}
-            {busy && <div className="h-12 w-40 animate-pulse rounded-2xl bg-card" />}
-            <div ref={end} />
-          </div>
-          <form className="sticky bottom-4 mt-6 flex gap-2" onSubmit={(e) => { e.preventDefault(); send(input); }}>
-            <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask about the proposal…"
-              className="flex-1 rounded-lg border border-line bg-card px-3 py-3 outline-none focus:border-accent" />
-            <button disabled={busy || !input.trim()} className="rounded-lg bg-accent px-5 font-medium text-white disabled:opacity-40">Send</button>
-          </form>
-        </>
+              <button onClick={join} disabled={busy || form.name.trim().length < 2}
+                className="rounded-lg bg-accent px-4 py-2 font-medium text-white disabled:opacity-40">
+                {busy ? t.opening : t.enter}
+              </button>
+            </div>
+          )}
+
+          {joined && (
+            <div className="mt-4">
+              <p className="mb-3 text-xs text-muted">{t.ai}</p>
+              <div className="space-y-3">
+                {msgs.map((m, i) => m.hidden ? null : (
+                  <div key={i} className={m.role === "user" ? "ml-auto max-w-[85%]" : "max-w-[90%]"}>
+                    <div className={`whitespace-pre-wrap rounded-2xl px-4 py-3 leading-relaxed ${m.role === "user" ? "bg-accent text-white" : "bg-paper"}`}>
+                      {m.content}
+                    </div>
+                  </div>
+                ))}
+                {busy && <div className="h-12 w-40 animate-pulse rounded-2xl bg-paper" />}
+                <div ref={end} />
+              </div>
+              <form className="mt-4 flex gap-2" onSubmit={(e) => { e.preventDefault(); send(input); }}>
+                <input value={input} onChange={(e) => setInput(e.target.value)} placeholder={t.placeholder}
+                  className="flex-1 rounded-lg border border-line bg-card px-3 py-3 outline-none focus:border-accent" />
+                <button disabled={busy || !input.trim()} className="rounded-lg bg-accent px-5 font-medium text-white disabled:opacity-40">{t.send}</button>
+              </form>
+            </div>
+          )}
+        </section>
       )}
     </main>
   );

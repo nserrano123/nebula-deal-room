@@ -78,9 +78,15 @@ export async function draftProposal(brief_code: string, counts: Counts = {}) {
   };
 }
 
-export async function approveAndSend(proposal_code: string, approved_by: string, narrative?: string) {
+/** Owner approval. The room link exists from here, but it opens only after the proposal is sent. */
+export async function approveProposal(proposal_code: string, approved_by: string, narrative?: string) {
   if (narrative && narrative.trim()) await callFn("fn_set_narrative", [TENANT_CODE, proposal_code, narrative.trim()]);
   const approved = await callFn<{ public_token: string }>("fn_approve_proposal", [TENANT_CODE, proposal_code, approved_by]);
-  await callFn("fn_mark_sent", [TENANT_CODE, proposal_code]);
   return { proposal_code, room_path: `/room/${approved.public_token}` };
+}
+
+/** The owner pressed "Send": the room opens for the customer. */
+export async function markSent(proposal_code: string) {
+  await callFn("fn_mark_sent", [TENANT_CODE, proposal_code]);
+  return { proposal_code, status_code: "S" };
 }
