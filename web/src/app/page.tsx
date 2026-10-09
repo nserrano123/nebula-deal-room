@@ -21,6 +21,11 @@ export default function Console() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
+  const [key, setKey] = useState("");
+
+  useEffect(() => {
+    setKey(new URLSearchParams(window.location.search).get("key") ?? "");
+  }, []);
 
   useEffect(() => {
     fetch("/api/catalog")
@@ -45,7 +50,7 @@ export default function Console() {
     try {
       const r = await fetch("/api/briefs", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "x-shield-key": key },
         body: JSON.stringify({ company, plan_code: plan, transcript }),
       });
       const data = await r.json();
@@ -63,7 +68,7 @@ export default function Console() {
       <header className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-line pb-6">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Nebula</p>
-          <h1 className="mt-1 font-serif text-3xl sm:text-4xl">From meeting to deal brief</h1>
+          <h1 className="mt-1 font-serif text-3xl sm:text-4xl">From meeting to live proposal</h1>
           <p className="mt-2 max-w-xl text-muted">
             Paste the transcript. Nebula extracts what the customer said, with their exact words, and Postgres
             validates it before anything is saved.
@@ -76,6 +81,12 @@ export default function Console() {
           </p>
         )}
       </header>
+
+      {!key && (
+        <p className="mb-6 rounded-lg bg-warn-soft px-4 py-2 text-sm text-warn">
+          Owner console: open this page as /?key=YOUR_SHIELD_ADMIN_KEY.
+        </p>
+      )}
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
         <section className="space-y-4">
@@ -152,6 +163,7 @@ export default function Console() {
           )}
           {busy && <div className="h-64 animate-pulse rounded-2xl bg-card" />}
           {result && <BriefView result={result} moduleName={moduleName} />}
+          {result && catalog && <ProposalStep result={result} ownerName={catalog.tenant.owner_name} adminKey={key} />}
         </section>
       </div>
     </main>
@@ -278,5 +290,141 @@ function Quote(props: { head: string; sub?: string; quote: string; speaker: stri
         </p>
       )}
     </div>
+  );
+}
+
+type Draft = {
+  proposal_code: string;
+  company_name: string;
+  narrative: string;
+  unverified_numbers: string[];
+  quote: {
+    lines: { line_no: number; concept_name: string; quantity: number; unit_price: number; subtotal: number; currency: string; recurrence_label: string; note: string | null }[];
+    totals: { total: number; currency: string; recurrence_label: string }[];
+    flags: unknown[];
+    per_vehicle?: { monthly_per_vehicle: number; vehicles: number; currency: string } | null;
+  };
+};
+
+const money = (n: number, c: string) => `${c} ${Number(n).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+
+function ProposalStep({ result, ownerName, adminKey }: { result: Result; ownerName: string; adminKey: string }) {
+  const b = result.brief;
+  const [counts, setCounts] = useState({
+    users: b.users_count ?? "",
+    employees: b.employees_count ?? "",
+    legal_entities: b.legal_entities_count ?? "",
+    vehicles: b.vehicles_count ?? "",
+  } as Record<string, number | string>);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [text, setText] = useState("");
+  const [room, setRoom] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const post = async (url: string, body: unknown) => {
+    const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json", "x-shield-key": adminKey }, body: JSON.stringify(body) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    return d;
+  };
+
+  async function makeDraft() {
+    setBusy("draft"); setError(null);
+    try {
+      const num = (v: number | string) => (v === "" || v === null ? null : Number(v));
+      const d: Draft = await post("/api/proposals", {
+        brief_code: result.saved.brief_code,
+        users: num(counts.users), employees: num(counts.employees),
+        legal_entities: num(counts.legal_entities), vehicles: num(counts.vehicles),
+      });
+      setDraft(d); setText(d.narrative);
+    } catch (e) { setError((e as Error).message); } finally { setBusy(null); }
+  }
+
+  async function send() {
+    if (!draft) return;
+    setBusy("send"); setError(null);
+    try {
+      const d = await post(`/api/proposals/${draft.proposal_code}/send`, { approved_by: ownerName, narrative: text });
+      setRoom(d.room_path);
+    } catch (e) { setError((e as Error).message); } finally { setBusy(null); }
+  }
+
+  const labels: [string, string][] = [["users", "Users"], ["legal_entities", "Legal entities"], ["employees", "Employees (payroll)"], ["vehicles", "Vehicles"]];
+
+  return (
+    <article className="mt-6 space-y-5 rounded-2xl border border-line bg-card p-6">
+      <h2 className="font-serif text-2xl">Proposal</h2>
+
+      {!draft && (
+        <>
+          <p className="text-sm text-muted">Confirm what the meeting left open. Postgres prices the deal from these numbers; the model never does.</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {labels.map(([k, l]) => (
+              <label key={k} className="text-sm">
+                <span className={counts[k] === "" && k === "users" ? "text-warn" : "text-muted"}>{l}</span>
+                <input type="number" min={0} value={counts[k]} onChange={(e) => setCounts({ ...counts, [k]: e.target.value })}
+                  className="mt-1 w-full rounded-lg border border-line px-3 py-2" />
+              </label>
+            ))}
+          </div>
+          <button onClick={makeDraft} disabled={!!busy || counts.users === ""}
+            className="w-full rounded-lg bg-accent px-4 py-3 font-medium text-white disabled:opacity-40">
+            {busy === "draft" ? "Pricing in Postgres and writing…" : "Draft proposal"}
+          </button>
+        </>
+      )}
+
+      {draft && (
+        <>
+          <p className="font-mono text-xs text-muted">{draft.proposal_code} · {draft.company_name} · Draft</p>
+          <table className="w-full text-sm">
+            <thead><tr className="text-left text-xs text-muted"><th className="py-1">Concept</th><th className="text-right">Qty</th><th className="text-right">Unit</th><th className="text-right">Subtotal</th><th className="text-right">Billing</th></tr></thead>
+            <tbody>
+              {draft.quote.lines.map((l) => (
+                <tr key={l.line_no} className="border-t border-line">
+                  <td className="py-2">{l.concept_name}{l.note && <span className="block text-xs text-muted">{l.note}</span>}</td>
+                  <td className="text-right font-mono">{l.quantity}</td>
+                  <td className="text-right font-mono">{money(l.unit_price, l.currency)}</td>
+                  <td className="text-right font-mono">{money(l.subtotal, l.currency)}</td>
+                  <td className="text-right text-muted">{l.recurrence_label}</td>
+                </tr>
+              ))}
+              {draft.quote.totals.map((t) => (
+                <tr key={t.recurrence_label} className="border-t-2 border-ink font-medium">
+                  <td className="py-2" colSpan={3}>Total · {t.recurrence_label}</td>
+                  <td className="text-right font-mono">{money(t.total, t.currency)}</td><td />
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {draft.quote.per_vehicle && (
+            <p className="text-sm text-muted">Equivalent: {money(draft.quote.per_vehicle.monthly_per_vehicle, draft.quote.per_vehicle.currency)} per vehicle per month ({draft.quote.per_vehicle.vehicles} vehicles)</p>
+          )}
+          {draft.unverified_numbers.length > 0 && (
+            <p className="rounded bg-warn-soft px-3 py-2 text-sm text-warn">
+              These numbers in the text are not in the Postgres quote: {draft.unverified_numbers.join(", ")}. Check or edit them before sending.
+            </p>
+          )}
+          <label className="block">
+            <span className="text-sm font-medium">Text written by Claude (you can edit it)</span>
+            <textarea value={text} onChange={(e) => setText(e.target.value)} rows={14} disabled={!!room}
+              className="mt-1 w-full rounded-lg border border-line px-3 py-2 text-sm leading-relaxed" />
+          </label>
+          {!room ? (
+            <button onClick={send} disabled={!!busy || !text.trim()} className="w-full rounded-lg bg-ink px-4 py-3 font-medium text-white disabled:opacity-40">
+              {busy === "send" ? "Approving…" : `Approve as ${ownerName} and open the room`}
+            </button>
+          ) : (
+            <div className="rounded-lg bg-accent-soft px-4 py-3">
+              <p className="text-sm text-accent">Approved and sent. Share this link with the customer:</p>
+              <a className="break-all font-mono text-sm text-accent underline" href={room} target="_blank">{typeof window !== "undefined" ? window.location.origin : ""}{room}</a>
+            </div>
+          )}
+        </>
+      )}
+      {error && <p className="rounded-lg border border-bad/30 bg-bad/5 px-3 py-2 text-sm text-bad">{error}</p>}
+    </article>
   );
 }

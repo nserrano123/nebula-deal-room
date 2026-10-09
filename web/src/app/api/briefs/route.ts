@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin";
 import { briefRequestSchema } from "@/lib/brief-schema";
 import { NebulaError } from "@/lib/db";
 import { runDealBrief } from "@/lib/deal-brief-flow";
@@ -7,6 +8,8 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 export async function POST(req: Request) {
+  const denied = requireAdmin(req);
+  if (denied) return denied;
   const parsed = briefRequestSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request." }, { status: 400 });
