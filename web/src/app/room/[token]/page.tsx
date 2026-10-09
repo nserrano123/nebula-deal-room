@@ -34,7 +34,11 @@ export default function Room({ params }: { params: Promise<{ token: string }> })
       .catch((e) => setError(e.message));
   }, [token]);
 
-  useEffect(() => end.current?.scrollIntoView({ behavior: "smooth" }), [msgs]);
+  // Block body on purpose: newer browsers return a Promise from scrollIntoView,
+  // and React would try to call it as the effect's cleanup.
+  useEffect(() => {
+    end.current?.scrollIntoView({ behavior: "smooth" });
+  }, [msgs]);
 
   async function join() {
     setBusy(true);
