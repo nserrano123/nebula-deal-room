@@ -51,7 +51,7 @@ export async function joinRoom(b: Base, who: { name: string; email?: string | nu
   const person = await roomCall<Record<string, unknown>>(
     "fn_join_room",
     [b.token, who.name, who.email || null, who.title || null, who.role || "OT"],
-    ["text", "text", "text", "text", "char"],
+    ["text", "text", "text", "text", "char(2)"],
   );
   await logEvents([{ ...base(b, String(proposal.proposal_code)), kind: "join", verdict: "allowed", text: `${who.name} joined` }]);
   const ctx = { proposal, person };
