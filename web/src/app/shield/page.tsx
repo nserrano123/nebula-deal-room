@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { OwnerGate } from "@/components/owner-session";
+import { OwnerNav } from "@/components/owner-nav";
 
 type Stats = {
   clickhouse: boolean;
@@ -33,6 +34,7 @@ const SEV = { critical: "bg-bad text-white", high: "bg-warn text-white", medium:
 export default function Shield() {
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:px-8">
+      <OwnerNav current="shield" />
       <OwnerGate>
         <ShieldDashboard />
       </OwnerGate>

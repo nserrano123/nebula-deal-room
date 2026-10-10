@@ -15,7 +15,7 @@ export type BriefResult = {
   attempts: number;
 };
 
-const normalize = (s: string) =>
+export const normalize = (s: string) =>
   s
     .toLowerCase()
     .normalize("NFD")

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { OwnerGate } from "@/components/owner-session";
+import { OwnerNav } from "@/components/owner-nav";
 import { ProposalDocument, detectLang, type Quote } from "@/components/proposal-document";
 import { COMPLEXITY_LABELS, ROLE_LABELS, type Brief, type SavedBrief } from "@/lib/brief-schema";
 
@@ -88,6 +89,7 @@ export default function Console() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:px-8">
+      <OwnerNav current="console" />
       <header className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-line pb-6">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Nebula</p>
