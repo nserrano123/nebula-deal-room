@@ -29,6 +29,9 @@ What their colleagues said (colleague_voice): ${JSON.stringify(s.colleague_voice
 Open questions: ${JSON.stringify(s.open_questions)}
 Proposal text: ${p.narrative}
 Official quote (computed by Postgres): ${JSON.stringify((p.quote as unknown as Record<string, unknown>)?.totals ?? p.quote)}
+${(p.quote as unknown as Record<string, unknown>)?.pricing_mode_code === "M" ? `Lines and terms of this negotiated proposal: ${JSON.stringify({ lines: (p.quote as unknown as Record<string, unknown>).lines, terms: (p.quote as unknown as Record<string, unknown>).terms })}
+This proposal has negotiated prices: simulate_price is not available; for other scenarios, offer that ${p.owner_name} prepares them and call escalate.` : ""}
+${Array.isArray((c.proposal as Record<string, unknown>).changes) && ((c.proposal as Record<string, unknown>).changes as unknown[]).length ? `This is version ${(c.proposal as Record<string, unknown>).version}. What changed and what was asked: ${JSON.stringify((c.proposal as Record<string, unknown>).changes)}` : ""}
 Product facts (the only product claims you may make): ${JSON.stringify(facts)}
 
 How to behave:

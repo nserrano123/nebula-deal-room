@@ -43,7 +43,7 @@ Nebula turns your meeting into a living proposal.
 | `sql/03_seed_fail_fast.sql` | Customer zero: Fail Fast pricing, modules, role focus and product facts. |
 | `sql/04_test_demo_flow.sql` | End-to-end test of the demo script. |
 | `prompts/` | The agent tasks: deal brief, proposal writer, room host, deal radar (text-to-SQL, planned), deal pulse. |
-| `sql/05`–`09` | Nebula Shield, demo seeds, owner flow, real Fail Fast pricing (volume tiers, implementation waived with commitment, annual = 11 months), and the Deals demo (`09`, fictitious Sierra Verde Logistics). |
+| `sql/05`–`09` | Nebula Shield, demo seeds, owner flow, real Fail Fast pricing (volume tiers, implementation waived with commitment, annual = 11 months), the Deals demo (`09`, fictitious Sierra Verde Logistics), proposal versions (`10`) and priced extras (`11`). |
 | `examples/` | Two fictitious meeting transcripts. |
 | `web/` | The Nebula app (Next.js + Mastra + Claude). `src/lib/deal-brief-flow.ts` turns a transcript into a saved brief; `src/mastra/` holds the agents. |
 
@@ -90,6 +90,7 @@ psql "$DATABASE_URL" -f sql/04_test_demo_flow.sql
 | Page | What it does |
 |---|---|
 | `/` Meeting → proposal | Import the Google Meet transcript from a Docs link, extract the brief (company and plan detected), confirm counts, draft, edit, approve, and **OK, send it** (opens a prefilled Gmail draft; you press Send). |
+| `/versions` New version | Import a proposal you sent outside Nebula (PDF), add the meetings that happened since, and Nebula prepares the next version: same prices unless you change them, each request answered with the customer's words, price differences computed by Postgres, pending prices block approval. See `prompts/06_proposal_versions.md`. |
 | `/deals` Deals | Every proposal with its room signals; per deal: people (new faces vs. meeting attendees), the timeline, and **Read the room**. |
 | `/shield` Shield | Security for agents that talk to strangers (see below). |
 

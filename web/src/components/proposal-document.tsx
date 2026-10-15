@@ -1,8 +1,22 @@
 // The proposal as the customer sees it: one designed page, in the customer's language.
 // Every number comes from the Postgres quote; the text comes from the approved narrative.
 
+export type QuoteTerms = {
+  validity?: string | null; execution?: string | null; timeline?: string | null;
+  payment_schedule?: { label: string; pct: number; amount?: number; currency?: string }[];
+  support?: string[]; notes?: string[];
+  rates?: { code: string; name: string; unit_label: string; price: number; currency: string }[];
+  volume_tiers?: { name: string; price: number | null; currency: string; unit_label: string }[];
+};
+
+export type Change = { change_no: number; origin_code: "P" | "R"; kind_code: "A" | "M" | "R" | "C"; topic: string;
+  before_text: string | null; after_text: string | null; request_quote: string | null; requested_by: string | null; meeting_at: string | null };
+
 export type Quote = {
-  lines: { line_no: number; concept_code: string; concept_name: string; quantity: number; unit_price: number; subtotal: number; currency: string; recurrence_code: string; note: string | null }[];
+  pricing_mode_code?: "M" | "C";
+  terms?: QuoteTerms;
+  pending_prices?: number;
+  lines: { line_no: number; kind_code?: "L" | "D"; concept_code: string; concept_name: string; description?: string | null; quantity: number; unit_price: number | null; subtotal: number | null; currency: string; recurrence_code: string; note: string | null; price_pending?: boolean; discount_pct?: number }[];
   totals: { total: number; currency: string; recurrence_code: string }[];
   tier?: { min_users: number; max_users: number | null; discount_pct: number; list_price: number; unit_price: number; currency: string } | null;
   list_monthly?: { total: number; currency: string } | null;
@@ -21,6 +35,10 @@ export type ProposalDoc = {
   narrative: string;
   quote: Quote;
   issued_at?: string | null;
+  version?: number;
+  prepared_for?: { name: string; title: string | null }[];
+  previous_version?: { proposal_code: string; version: number; external_ref: string | null; sent_at: string | null } | null;
+  changes?: Change[];
 };
 
 type Lang = "es" | "en";
@@ -50,6 +68,12 @@ const T = {
     perVehicle: (v: string, n: number) => `Equivale a ${v} por vehículo al mes (${n} vehículos).`,
     lic: "Usuarios Full · todos los módulos incluidos", ent: "Empresa adicional", impl: "Implementación y capacitación",
     implW: "Descuento por permanencia", emp: "por empleado", perMonth: "mes", M: "Mensual", O: "Única vez", from: "De", footer: "Propuesta válida por 30 días calendario desde su emisión.",
+    version: (n: number) => `Versión ${n}`, updates: (ref: string, d: string) => `Actualiza la propuesta ${ref} del ${d}`,
+    whatChanged: "Qué cambió en esta versión", kinds: { A: "Nuevo", M: "Ajustado", R: "Retirado", C: "Aclarado" } as Record<string, string>,
+    asked: "Lo que se pidió", cloud: "Servicio en la nube · mensual", implTitle: "Implementación · pago único", pending: "Por definir",
+    schedule: "Forma de pago de la implementación", rates: "Tarifas de referencia", tiers: "Opciones por volumen", conditions: "Condiciones",
+    validityL: "Vigencia", executionL: "Ejecución", timelineL: "Tiempo de implementación", supportL: "Soporte", notesL: "Notas y condiciones comerciales",
+    pendingNote: "Hay valores por definir: esta versión aún no puede enviarse.",
   },
   en: {
     eyebrow: "Commercial proposal", preparedFor: "Prepared for", issued: "Issued", validity: "Valid for",
@@ -68,6 +92,12 @@ const T = {
     perVehicle: (v: string, n: number) => `That is ${v} per vehicle per month (${n} vehicles).`,
     lic: "Full users · all modules included", ent: "Additional legal entity", impl: "Implementation and training",
     implW: "Commitment discount", emp: "per employee", perMonth: "month", M: "Monthly", O: "One-time", from: "From", footer: "This proposal is valid for 30 calendar days from issue.",
+    version: (n: number) => `Version ${n}`, updates: (ref: string, d: string) => `Updates proposal ${ref} of ${d}`,
+    whatChanged: "What changed in this version", kinds: { A: "New", M: "Adjusted", R: "Removed", C: "Clarified" } as Record<string, string>,
+    asked: "What was asked", cloud: "Cloud service · monthly", implTitle: "Implementation · one-time", pending: "To be defined",
+    schedule: "Implementation payment schedule", rates: "Reference rates", tiers: "Volume options", conditions: "Conditions",
+    validityL: "Valid for", executionL: "Delivery", timelineL: "Implementation time", supportL: "Support", notesL: "Notes and commercial conditions",
+    pendingNote: "Some values are still to be defined: this version cannot be sent yet.",
   },
 };
 
@@ -108,6 +138,7 @@ function Narrative({ text }: { text: string }) {
 }
 
 export function ProposalDocument({ doc, lang: forced }: { doc: ProposalDoc; lang?: Lang }) {
+  if (doc.quote.pricing_mode_code === "M") return <NegotiatedProposal doc={doc} lang={forced ?? detectLang(doc.narrative)} />;
   const lang = forced ?? detectLang(doc.narrative);
   const t = T[lang];
   const q = doc.quote;
@@ -135,7 +166,7 @@ export function ProposalDocument({ doc, lang: forced }: { doc: ProposalDoc; lang
           {users != null && <div><dt className="text-white/50">{t.users}</dt><dd className="mt-0.5">{users}</dd></div>}
           {impl && (
             <div><dt className="text-white/50">{t.implementation}</dt>
-              <dd className="mt-0.5">{waived ? t.free : fmt(impl.subtotal, impl.currency)}{waived && q.commitment_months ? <span className="block text-white/50">{t.commitment(q.commitment_months)}</span> : null}</dd></div>
+              <dd className="mt-0.5">{waived ? t.free : fmt(impl.subtotal ?? 0, impl.currency)}{waived && q.commitment_months ? <span className="block text-white/50">{t.commitment(q.commitment_months)}</span> : null}</dd></div>
           )}
         </dl>
       </header>
@@ -201,8 +232,8 @@ export function ProposalDocument({ doc, lang: forced }: { doc: ProposalDoc; lang
                       </span>
                     </td>
                     <td className="whitespace-nowrap py-3 pl-6 text-right font-mono">{l.quantity}</td>
-                    <td className="whitespace-nowrap py-3 pl-6 text-right font-mono">{fmt(l.unit_price, l.currency)}</td>
-                    <td className="whitespace-nowrap py-3 pl-6 text-right font-mono">{fmt(l.subtotal, l.currency)}</td>
+                    <td className="whitespace-nowrap py-3 pl-6 text-right font-mono">{fmt(l.unit_price ?? 0, l.currency)}</td>
+                    <td className="whitespace-nowrap py-3 pl-6 text-right font-mono">{fmt(l.subtotal ?? 0, l.currency)}</td>
                   </tr>
                 ))}
                 {monthly && (
@@ -225,7 +256,7 @@ export function ProposalDocument({ doc, lang: forced }: { doc: ProposalDoc; lang
             <h2 className="mb-4 text-xs font-semibold uppercase tracking-[0.2em] text-accent">{t.included}</h2>
             <ul className="space-y-3">
               {impl && waived && q.commitment_months && (
-                <li className="rounded-xl border border-line p-4 text-sm">{t.implWaived(q.commitment_months, fmt(impl.subtotal, impl.currency))}</li>
+                <li className="rounded-xl border border-line p-4 text-sm">{t.implWaived(q.commitment_months, fmt(impl.subtotal ?? 0, impl.currency))}</li>
               )}
               {edoc && (
                 <li className="rounded-xl border border-line p-4 text-sm">
@@ -260,6 +291,186 @@ export function ProposalDocument({ doc, lang: forced }: { doc: ProposalDoc; lang
 
       <footer className="border-t border-line px-8 py-6 text-xs text-muted sm:px-12">
         {doc.tenant_name} · {doc.owner_name} · {t.footer}
+      </footer>
+    </article>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Negotiated proposals (imported or updated versions): the owner's prices,
+// Postgres's arithmetic, the customer's requests answered one by one.
+// ---------------------------------------------------------------------
+const H2 = ({ children }: { children: React.ReactNode }) => (
+  <h2 className="mb-4 text-xs font-semibold uppercase tracking-[0.2em] text-accent">{children}</h2>
+);
+
+function NegotiatedProposal({ doc, lang }: { doc: ProposalDoc; lang: Lang }) {
+  const t = T[lang];
+  const q = doc.quote;
+  const terms = q.terms ?? {};
+  const loc = lang === "es" ? "es-CO" : "en-US";
+  const date = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDateString(loc, { day: "numeric", month: "long", year: "numeric", timeZone: "America/Bogota" }) : "";
+  const fmt = (n: number, c: string) => money(n, c, lang);
+  const monthly = q.totals.find((x) => x.recurrence_code === "M");
+  const oneTime = q.totals.find((x) => x.recurrence_code === "O");
+  const users = q.inputs?.users;
+  const groups = (["M", "O"] as const).map((rec) => ({ rec, lines: q.lines.filter((l) => l.recurrence_code === rec), total: q.totals.find((x) => x.recurrence_code === rec) }))
+    .filter((g) => g.lines.length);
+  const requests = (doc.changes ?? []).filter((c) => c.origin_code === "R");
+  const prev = doc.previous_version;
+
+  return (
+    <article className="proposal mx-auto max-w-3xl overflow-hidden rounded-2xl border border-line bg-card shadow-sm print:max-w-none print:rounded-none print:border-0 print:shadow-none">
+      <header className="bg-ink px-8 py-10 text-white sm:px-12">
+        <p className="text-xs font-semibold uppercase tracking-[0.25em] text-white/60">{doc.tenant_name} · {t.eyebrow}{doc.version ? ` · ${t.version(doc.version)}` : ""}</p>
+        <h1 className="mt-4 font-serif text-4xl leading-tight sm:text-5xl">{doc.company_name}</h1>
+        <p className="mt-2 font-mono text-xs text-white/50">{doc.proposal_code}</p>
+        {prev && <p className="mt-3 text-sm text-white/70">{t.updates(prev.external_ref ?? prev.proposal_code, date(prev.sent_at))}</p>}
+        <dl className="mt-8 grid grid-cols-2 gap-x-6 gap-y-4 text-sm sm:grid-cols-4">
+          {doc.prepared_for && doc.prepared_for.length > 0 && (
+            <div className="col-span-2"><dt className="text-white/50">{t.preparedFor}</dt>
+              <dd className="mt-0.5">{doc.prepared_for.map((p) => p.title ? `${p.name} · ${p.title}` : p.name).join(" — ")}</dd></div>
+          )}
+          <div><dt className="text-white/50">{t.issued}</dt><dd className="mt-0.5">{date(doc.issued_at ?? new Date().toISOString())}</dd></div>
+          <div><dt className="text-white/50">{t.validity}</dt><dd className="mt-0.5">{terms.validity ?? t.validityValue}</dd></div>
+        </dl>
+      </header>
+
+      <div className="space-y-12 px-8 py-10 sm:px-12">
+        <section>
+          <H2>{t.figure}</H2>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {monthly && <div className="rounded-xl bg-paper p-5"><p className="font-serif text-3xl">{fmt(monthly.total, monthly.currency)}</p><p className="mt-1 text-sm text-muted">{t.monthly}</p></div>}
+            {oneTime && <div className="rounded-xl bg-paper p-5"><p className="font-serif text-3xl">{fmt(oneTime.total, oneTime.currency)}</p><p className="mt-1 text-sm text-muted">{t.oneTime}</p></div>}
+            {users != null && <div className="rounded-xl bg-accent-soft p-5"><p className="font-serif text-3xl text-accent">{users}</p><p className="mt-1 text-sm text-accent/80">{t.users}</p></div>}
+          </div>
+          {(q.pending_prices ?? 0) > 0 && <p className="mt-3 rounded-lg bg-warn-soft px-3 py-2 text-sm text-warn print:hidden">{t.pendingNote}</p>}
+        </section>
+
+        {requests.length > 0 && (
+          <section>
+            <H2>{t.whatChanged}</H2>
+            <ol className="space-y-4">
+              {requests.map((c) => (
+                <li key={c.change_no} className="rounded-xl border border-line p-4">
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-accent">{t.kinds[c.kind_code]}</span>
+                    <div className="min-w-0">
+                      <p className="font-medium">{c.topic}</p>
+                      {c.after_text && <p className="mt-1 text-sm leading-relaxed">{c.after_text}</p>}
+                      {c.request_quote && (
+                        <p className="mt-2 border-l-2 border-accent/30 pl-3 text-sm italic text-muted">
+                          “{c.request_quote}”{c.requested_by ? ` — ${c.requested_by}` : ""}{c.meeting_at ? `, ${date(c.meeting_at)}` : ""}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
+
+        <section>
+          <H2>{t.proposal}</H2>
+          <Narrative text={doc.narrative} />
+          <p className="mt-6 text-sm text-muted">— {doc.owner_name}, {doc.tenant_name}</p>
+        </section>
+
+        <section>
+          <H2>{t.investment}</H2>
+          <div className="space-y-8">
+            {groups.map((g) => (
+              <div key={g.rec} className="overflow-x-auto">
+                <p className="mb-2 text-sm font-semibold">{g.rec === "M" ? t.cloud : t.implTitle}</p>
+                <table className="w-full min-w-[520px] text-sm">
+                  <thead>
+                    <tr className="border-b-2 border-ink text-left text-xs uppercase tracking-wider text-muted">
+                      <th className="py-2 font-medium">{t.concept}</th><th className="py-2 pl-6 text-right font-medium">{t.qty}</th>
+                      <th className="py-2 pl-6 text-right font-medium">{t.unit}</th><th className="py-2 pl-6 text-right font-medium">{t.subtotal}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {g.lines.map((l) => (
+                      <tr key={l.line_no} className={`border-b border-line align-top ${l.kind_code === "D" ? "text-good" : ""}`}>
+                        <td className="py-3 pr-4">{l.concept_name}{l.description && <span className="block text-xs text-muted">{l.description}</span>}</td>
+                        <td className="whitespace-nowrap py-3 pl-6 text-right font-mono">{l.kind_code === "D" ? `${l.discount_pct} %` : l.quantity}</td>
+                        <td className="whitespace-nowrap py-3 pl-6 text-right font-mono">{l.kind_code === "D" ? "" : l.price_pending ? <span className="text-warn">{t.pending}</span> : fmt(l.unit_price ?? 0, l.currency)}</td>
+                        <td className="whitespace-nowrap py-3 pl-6 text-right font-mono">{l.price_pending ? <span className="text-warn">{t.pending}</span> : fmt(l.subtotal ?? 0, l.currency)}</td>
+                      </tr>
+                    ))}
+                    {g.total && (
+                      <tr className="font-semibold"><td className="pt-4" colSpan={3}>{g.rec === "M" ? t.totalMonthly : t.totalOneTime}</td>
+                        <td className="whitespace-nowrap pt-4 text-right font-mono">{fmt(g.total.total, g.total.currency)}</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {terms.payment_schedule && terms.payment_schedule.length > 0 && (
+          <section>
+            <H2>{t.schedule}</H2>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {terms.payment_schedule.map((s, i) => (
+                <div key={i} className="rounded-xl border border-line p-4">
+                  <p className="text-sm text-muted">{s.label} · {s.pct} %</p>
+                  {s.amount != null && <p className="mt-1 font-serif text-xl">{fmt(s.amount, s.currency ?? oneTime?.currency ?? "")}</p>}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {((terms.rates?.length ?? 0) > 0 || (terms.volume_tiers?.length ?? 0) > 0) && (
+          <section className="grid gap-6 sm:grid-cols-2">
+            {(terms.volume_tiers?.length ?? 0) > 0 && (
+              <div>
+                <H2>{t.tiers}</H2>
+                <ul className="divide-y divide-line rounded-xl border border-line text-sm">
+                  {terms.volume_tiers!.map((v, i) => (
+                    <li key={i} className="flex justify-between gap-3 px-4 py-2.5"><span>{v.name}</span>
+                      <span className="whitespace-nowrap font-mono">{v.price == null ? t.pending : `${fmt(v.price, v.currency)} / ${v.unit_label}`}</span></li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {(terms.rates?.length ?? 0) > 0 && (
+              <div>
+                <H2>{t.rates}</H2>
+                <ul className="divide-y divide-line rounded-xl border border-line text-sm">
+                  {terms.rates!.map((r) => (
+                    <li key={r.code} className="flex justify-between gap-3 px-4 py-2.5"><span>{r.name}</span>
+                      <span className="whitespace-nowrap font-mono">{fmt(r.price, r.currency)} / {r.unit_label}</span></li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
+        )}
+
+        <section>
+          <H2>{t.conditions}</H2>
+          <dl className="grid gap-4 text-sm sm:grid-cols-3">
+            {terms.validity && <div><dt className="text-xs uppercase tracking-wider text-muted">{t.validityL}</dt><dd className="mt-1">{terms.validity}</dd></div>}
+            {terms.execution && <div><dt className="text-xs uppercase tracking-wider text-muted">{t.executionL}</dt><dd className="mt-1">{terms.execution}</dd></div>}
+            {terms.timeline && <div><dt className="text-xs uppercase tracking-wider text-muted">{t.timelineL}</dt><dd className="mt-1">{terms.timeline}</dd></div>}
+          </dl>
+          {(terms.support?.length ?? 0) > 0 && (
+            <div className="mt-5"><p className="text-xs uppercase tracking-wider text-muted">{t.supportL}</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm marker:text-accent">{terms.support!.map((x, i) => <li key={i}>{x}</li>)}</ul></div>
+          )}
+          {(terms.notes?.length ?? 0) > 0 && (
+            <div className="mt-5"><p className="text-xs uppercase tracking-wider text-muted">{t.notesL}</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm marker:text-accent">{terms.notes!.map((x, i) => <li key={i}>{x}</li>)}</ul></div>
+          )}
+        </section>
+      </div>
+
+      <footer className="border-t border-line px-8 py-6 text-xs text-muted sm:px-12">
+        {doc.tenant_name} · {doc.owner_name}{terms.validity ? ` · ${t.validityL}: ${terms.validity}` : ""}
       </footer>
     </article>
   );

@@ -173,7 +173,7 @@ BEGIN
     -- 3. Totals per currency and recurrence (pending lines count as zero and are flagged)
     SELECT coalesce(jsonb_agg(jsonb_build_object('total', t.total, 'currency', t.currency,
                     'recurrence_code', t.rec, 'recurrence_label', fn_label('recurrence', t.rec))
-                    ORDER BY t.rec DESC, t.currency), '[]')
+                    ORDER BY t.rec, t.currency), '[]')
       INTO v_totals
       FROM (SELECT x->>'currency' AS currency, x->>'recurrence_code' AS rec,
                    sum(coalesce((x->>'subtotal')::numeric, 0)) AS total
@@ -238,7 +238,10 @@ BEGIN
     IF p_opportunity_code IS NOT NULL THEN
         o := fn_get_opportunity(t.id, p_opportunity_code);
     ELSE
-        o := fn_get_opportunity(t.id, fn_create_opportunity(p_tenant_code, p_company)->>'opportunity_code');
+        -- two statements: a STABLE lookup in the same expression would not see the new row
+        v_dup := fn_create_opportunity(p_tenant_code, p_company)->>'opportunity_code';
+        o := fn_get_opportunity(t.id, v_dup);
+        v_dup := NULL;
     END IF;
     IF p_issued_on IS NULL OR p_issued_on > current_date THEN
         RAISE EXCEPTION 'The imported proposal needs the date it was issued (not in the future).';
@@ -273,6 +276,37 @@ BEGIN
         'quote', v_quote);
 END $$;
 
+-- Price differences of a version against the one before it, line by line (origin P).
+CREATE OR REPLACE FUNCTION fn_record_price_changes(p_proposal_id uuid)
+RETURNS void LANGUAGE plpgsql SET search_path = nebula, public AS $$
+DECLARE p proposal; par proposal; v_no int;
+BEGIN
+    SELECT * INTO p FROM proposal WHERE id = p_proposal_id;
+    DELETE FROM proposal_change WHERE proposal_id = p.id AND origin = 'P';
+    IF p.parent_proposal_id IS NULL THEN RETURN; END IF;
+    SELECT * INTO par FROM proposal WHERE id = p.parent_proposal_id;
+    SELECT coalesce(max(change_no), 0) INTO v_no FROM proposal_change WHERE proposal_id = p.id;
+
+    INSERT INTO proposal_change (proposal_id, change_no, origin, kind, topic, before_text, after_text)
+    SELECT p.id, v_no + row_number() OVER (ORDER BY coalesce(n.ln, 1000 + a.ln)), 'P',
+           CASE WHEN a.cc IS NULL THEN 'A' WHEN n.cc IS NULL THEN 'R' ELSE 'M' END,
+           coalesce(n.cn, a.cn),
+           CASE WHEN a.cc IS NULL THEN NULL ELSE format('%s × %s %s = %s %s', a.q, a.cur, a.up, a.cur, a.st) END,
+           CASE WHEN n.cc IS NULL THEN NULL
+                WHEN n.pend THEN format('%s × price pending', n.q)
+                ELSE format('%s × %s %s = %s %s', n.q, n.cur, n.up, n.cur, n.st) END
+      FROM (SELECT (x->>'line_no')::int ln, x->>'concept_code' cc, x->>'concept_name' cn, x->>'currency' cur,
+                   (x->>'quantity')::numeric q, nullif(x->>'unit_price','')::numeric up, nullif(x->>'subtotal','')::numeric st
+              FROM jsonb_array_elements(par.quote->'lines') x) a
+      FULL JOIN
+           (SELECT (x->>'line_no')::int ln, x->>'concept_code' cc, x->>'concept_name' cn, x->>'currency' cur,
+                   (x->>'quantity')::numeric q, nullif(x->>'unit_price','')::numeric up, nullif(x->>'subtotal','')::numeric st,
+                   coalesce((x->>'price_pending')::boolean, false) pend
+              FROM jsonb_array_elements(p.quote->'lines') x) n
+        ON n.cc = a.cc
+     WHERE a.cc IS NULL OR n.cc IS NULL OR a.q IS DISTINCT FROM n.q OR a.st IS DISTINCT FROM n.st OR n.pend;
+END $$;
+
 -- ---------------------------------------------------------------------
 -- Create the next version of a proposal from one or more new meetings.
 -- p_changes: [{kind:'A'|'M'|'R'|'C', topic, before_text, after_text,
@@ -287,7 +321,7 @@ RETURNS jsonb LANGUAGE plpgsql SET search_path = nebula, public AS $$
 DECLARE
     t tenant; par proposal; o opportunity; b meeting_brief; v_brief_ids uuid[] := '{}'; v_last uuid;
     v_quote jsonb; v_code text; v_id uuid; v_version int; v_no int := 0; c jsonb; v_kind char(1);
-    v_open text; d record; v_bc text;
+    v_open text; v_bc text;
 BEGIN
     t   := fn_get_tenant(p_tenant_code);
     par := fn_get_proposal(t.id, p_parent_code);
@@ -342,27 +376,7 @@ BEGIN
                 c->>'request_quote', c->>'requested_by', b.id);
     END LOOP;
 
-    -- Price differences, computed line by line against the previous version
-    FOR d IN
-        WITH a AS (SELECT x->>'concept_code' cc, x->>'concept_name' cn, x->>'currency' cur, x->>'recurrence_code' rec,
-                          (x->>'quantity')::numeric q, nullif(x->>'subtotal','')::numeric st
-                     FROM jsonb_array_elements(par.quote->'lines') x),
-             n AS (SELECT x->>'concept_code' cc, x->>'concept_name' cn, x->>'currency' cur, x->>'recurrence_code' rec,
-                          (x->>'quantity')::numeric q, nullif(x->>'subtotal','')::numeric st, (x->>'price_pending')::boolean pend
-                     FROM jsonb_array_elements(v_quote->'lines') x)
-        SELECT CASE WHEN a.cc IS NULL THEN 'A' WHEN n.cc IS NULL THEN 'R' ELSE 'M' END AS kind,
-               coalesce(n.cn, a.cn) AS topic,
-               CASE WHEN a.cc IS NULL THEN NULL ELSE format('%s × %s = %s %s', a.q, a.cn, a.st, a.cur) END AS before_text,
-               CASE WHEN n.cc IS NULL THEN NULL
-                    WHEN n.pend THEN format('%s × %s · price pending', n.q, n.cn)
-                    ELSE format('%s × %s = %s %s', n.q, n.cn, n.st, n.cur) END AS after_text
-          FROM a FULL JOIN n ON n.cc = a.cc
-         WHERE a.cc IS NULL OR n.cc IS NULL OR a.q IS DISTINCT FROM n.q OR a.st IS DISTINCT FROM n.st
-    LOOP
-        v_no := v_no + 1;
-        INSERT INTO proposal_change (proposal_id, change_no, origin, kind, topic, before_text, after_text)
-        VALUES (v_id, v_no, 'P', d.kind, d.topic, d.before_text, d.after_text);
-    END LOOP;
+    PERFORM fn_record_price_changes(v_id);
 
     RETURN jsonb_build_object('proposal_code', v_code, 'version', v_version,
         'parent_proposal_code', par.code, 'parent_version', par.version,
@@ -389,7 +403,7 @@ $$;
 -- Price changes are recomputed against the previous version.
 CREATE OR REPLACE FUNCTION fn_set_version_pricing(p_tenant_code text, p_proposal_code text, p_lines jsonb, p_terms jsonb)
 RETURNS jsonb LANGUAGE plpgsql SET search_path = nebula, public AS $$
-DECLARE t tenant; p proposal; par proposal; v_quote jsonb; v_no int; d record;
+DECLARE t tenant; p proposal; v_quote jsonb;
 BEGIN
     t := fn_get_tenant(p_tenant_code);
     p := fn_get_proposal(t.id, p_proposal_code);
@@ -403,31 +417,7 @@ BEGIN
     UPDATE proposal SET quote = v_quote WHERE id = p.id;
     PERFORM fn_store_lines(p.id, v_quote);
 
-    IF p.parent_proposal_id IS NOT NULL THEN
-        SELECT * INTO par FROM proposal WHERE id = p.parent_proposal_id;
-        DELETE FROM proposal_change WHERE proposal_id = p.id AND origin = 'P';
-        SELECT coalesce(max(change_no), 0) INTO v_no FROM proposal_change WHERE proposal_id = p.id;
-        FOR d IN
-            WITH a AS (SELECT x->>'concept_code' cc, x->>'concept_name' cn, x->>'currency' cur,
-                              (x->>'quantity')::numeric q, nullif(x->>'subtotal','')::numeric st
-                         FROM jsonb_array_elements(par.quote->'lines') x),
-                 n AS (SELECT x->>'concept_code' cc, x->>'concept_name' cn, x->>'currency' cur,
-                              (x->>'quantity')::numeric q, nullif(x->>'subtotal','')::numeric st, (x->>'price_pending')::boolean pend
-                         FROM jsonb_array_elements(v_quote->'lines') x)
-            SELECT CASE WHEN a.cc IS NULL THEN 'A' WHEN n.cc IS NULL THEN 'R' ELSE 'M' END AS kind,
-                   coalesce(n.cn, a.cn) AS topic,
-                   CASE WHEN a.cc IS NULL THEN NULL ELSE format('%s × %s = %s %s', a.q, a.cn, a.st, a.cur) END AS before_text,
-                   CASE WHEN n.cc IS NULL THEN NULL
-                        WHEN n.pend THEN format('%s × %s · price pending', n.q, n.cn)
-                        ELSE format('%s × %s = %s %s', n.q, n.cn, n.st, n.cur) END AS after_text
-              FROM a FULL JOIN n ON n.cc = a.cc
-             WHERE a.cc IS NULL OR n.cc IS NULL OR a.q IS DISTINCT FROM n.q OR a.st IS DISTINCT FROM n.st
-        LOOP
-            v_no := v_no + 1;
-            INSERT INTO proposal_change (proposal_id, change_no, origin, kind, topic, before_text, after_text)
-            VALUES (p.id, v_no, 'P', d.kind, d.topic, d.before_text, d.after_text);
-        END LOOP;
-    END IF;
+    PERFORM fn_record_price_changes(p.id);
     RETURN jsonb_build_object('proposal_code', p.code, 'quote', v_quote, 'changes', fn_proposal_changes(p.id));
 END $$;
 
@@ -594,7 +584,22 @@ REVOKE ALL ON FUNCTION
     fn_manual_quote(jsonb, jsonb), fn_store_lines(uuid, jsonb),
     fn_import_proposal(text, text, text, date, jsonb, jsonb, text, jsonb, text),
     fn_create_version(text, text, text[], jsonb, jsonb, jsonb, text, jsonb),
-    fn_proposal_changes(uuid), fn_set_version_pricing(text, text, jsonb, jsonb),
+    fn_proposal_changes(uuid), fn_set_version_pricing(text, text, jsonb, jsonb), fn_record_price_changes(uuid),
     fn_price_items(text)
 FROM PUBLIC;
 REVOKE ALL ON proposal_brief, proposal_change, price_item FROM nebula_room;
+
+-- The date a meeting actually happened (briefs default to the moment they are saved)
+CREATE OR REPLACE FUNCTION fn_set_brief_meeting_at(p_tenant_code text, p_brief_code text, p_meeting_at timestamptz)
+RETURNS jsonb LANGUAGE plpgsql SET search_path = nebula, public AS $$
+DECLARE t tenant; b meeting_brief;
+BEGIN
+    t := fn_get_tenant(p_tenant_code);
+    b := fn_get_brief(t.id, p_brief_code);
+    IF p_meeting_at > now() + interval '1 day' THEN
+        RAISE EXCEPTION 'The meeting date of % cannot be in the future.', b.code;
+    END IF;
+    UPDATE meeting_brief SET meeting_at = p_meeting_at WHERE id = b.id;
+    RETURN jsonb_build_object('brief_code', b.code, 'meeting_at', p_meeting_at);
+END $$;
+REVOKE ALL ON FUNCTION fn_set_brief_meeting_at(text, text, timestamptz) FROM PUBLIC;

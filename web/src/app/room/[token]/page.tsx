@@ -104,6 +104,10 @@ export default function Room({ params }: { params: Promise<{ token: string }> })
         tenant_name: String(proposal.tenant_name), owner_name: String(proposal.owner_name),
         narrative: String(proposal.narrative ?? ""), quote: proposal.quote as ProposalDoc["quote"],
         issued_at: (proposal.sent_at as string | null) ?? null,
+        version: proposal.version as number | undefined,
+        prepared_for: (proposal.prepared_for as ProposalDoc["prepared_for"]) ?? [],
+        previous_version: (proposal.previous_version as ProposalDoc["previous_version"]) ?? null,
+        changes: (proposal.changes as ProposalDoc["changes"]) ?? [],
       }
     : null;
 
