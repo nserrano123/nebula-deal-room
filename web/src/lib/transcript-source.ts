@@ -44,7 +44,18 @@ export function extractTranscript(text: string): string {
   return text.trim();
 }
 
-export async function importFromGoogleDocs(url: string): Promise<{ transcript: string; title: string | null; chars: number }> {
+const MONTHS: Record<string, string> = { ene: "01", jan: "01", feb: "02", mar: "03", abr: "04", apr: "04", may: "05", jun: "06", jul: "07",
+  ago: "08", aug: "08", sep: "09", oct: "10", nov: "11", dic: "12", dec: "12" };
+
+/** The meeting date Gemini prints at the top of its notes ("oct 13, 2026"), as noon in Bogotá. */
+export function meetingDateFromText(text: string): string | null {
+  const m = text.slice(0, 600).match(/\b(ene|jan|feb|mar|abr|apr|may|jun|jul|ago|aug|sept?|oct|nov|dic|dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})/i);
+  if (!m) return null;
+  const month = MONTHS[m[1].toLowerCase().slice(0, 3)];
+  return month ? `${m[3]}-${month}-${m[2].padStart(2, "0")}T12:00:00-05:00` : null;
+}
+
+export async function importFromGoogleDocs(url: string): Promise<{ transcript: string; title: string | null; chars: number; meeting_at: string | null }> {
   const { id, tab } = parseDocLink(url);
   // Whole document first (Gemini puts notes and transcript in one doc); then the tab in the link.
   let text = await exportDoc(id, null);
@@ -57,5 +68,5 @@ export async function importFromGoogleDocs(url: string): Promise<{ transcript: s
   const title = text.match(/^\s*#*\s*\**([^\n*]+?)\s*-\s*Transcripci[oó]n/im)?.[1]?.trim() ?? null;
   const transcript = extractTranscript(text);
   if (transcript.length < 200) throw new TranscriptImportError("The document has no transcript long enough to analyze.");
-  return { transcript, title, chars: transcript.length };
+  return { transcript, title, chars: transcript.length, meeting_at: meetingDateFromText(text) };
 }

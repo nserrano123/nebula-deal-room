@@ -21,7 +21,7 @@ export const POST = ownerRoute("versions/meeting", async (req: Request) => {
   if (url) {
     const doc = await importFromGoogleDocs(url);
     transcript = doc.transcript;
-    meeting_at ??= meetingDateFromTitle(doc.title);
+    meeting_at ??= doc.meeting_at ?? meetingDateFromTitle(doc.title);
   }
   if (transcript.length < 200) throw new BadRequest("Paste the meeting transcript or a Google Docs link.");
   return addMeeting(opportunity_code, transcript, meeting_at);
