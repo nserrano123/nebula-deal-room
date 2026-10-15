@@ -13,7 +13,9 @@ export function ownerRoute<T>(label: string, run: (req: Request, ctx: T) => Prom
       if (e instanceof NebulaError) return NextResponse.json({ error: e.message }, { status: 422 });
       if (e instanceof BadRequest) return NextResponse.json({ error: e.message }, { status: 400 });
       console.error(`[${label}]`, e);
-      return NextResponse.json({ error: "Something failed on our side. Try again in a moment." }, { status: 500 });
+      // Owner-only routes: the owner sees the technical reason, trimmed.
+      const detail = e instanceof Error ? e.message.slice(0, 400) : String(e).slice(0, 400);
+      return NextResponse.json({ error: `Something failed on our side: ${detail}` }, { status: 500 });
     }
   };
 }
