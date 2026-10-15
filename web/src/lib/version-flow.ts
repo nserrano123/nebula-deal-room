@@ -43,7 +43,9 @@ export async function readProposalPdf(bytes: Uint8Array) {
   const [tenant] = await query<{ name: string; owner_name: string }>(`select name, owner_name from nebula.tenant where code = $1`, [TENANT_CODE]);
   const result = await proposalImporterAgent.generate([{ role: "user", content: text }], {
     instructions: importerInstructions(tenant),
-    structuredOutput: { schema: importSchema },
+    // The schema is too large for strict (grammar-constrained) output: JSON by prompt, still validated with zod.
+    structuredOutput: { schema: importSchema, jsonPromptInjection: true },
+    modelSettings: { maxOutputTokens: 16000 },
   });
   if (!result.object) throw new Error("The model did not return the proposal. Try again.");
   const proposal = importSchema.parse(result.object);
@@ -173,7 +175,8 @@ export async function draftVersion(opportunity_code: string, brief_codes: string
   const result = await proposalUpdaterAgent.generate(
     [{ role: "user", content: `${JSON.stringify(input)}\n\nPrepare version ${parent.version + 1}.` }],
     { instructions: updaterInstructions({ owner_name: tenant.owner_name, tenant_name: tenant.name, company_name: parent.company_name }),
-      structuredOutput: { schema: versionSchema } },
+      structuredOutput: { schema: versionSchema, jsonPromptInjection: true },
+      modelSettings: { maxOutputTokens: 20000 } },
   );
   if (!result.object) throw new Error("The model did not return the new version. Try again.");
   const draft = versionSchema.parse(result.object);
