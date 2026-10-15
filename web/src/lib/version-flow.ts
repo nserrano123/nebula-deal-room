@@ -188,6 +188,9 @@ export async function draftVersion(opportunity_code: string, brief_codes: string
     JSON.stringify(draft.changes), draft.narrative, draft.prepared_for.length ? JSON.stringify(draft.prepared_for) : null,
   ]);
 
+  // What the owner must decide stays with the draft until it is approved.
+  await callFn("fn_set_review_notes", [TENANT_CODE, created.proposal_code, JSON.stringify([...draft.owner_questions, ...fixes])]);
+
   const haystack = normalize(meetings.map((m) => m.transcript).join("\n"));
   const unverified_quotes = draft.changes.filter((c) => c.request_quote && !haystack.includes(normalize(c.request_quote))).map((c) => c.request_quote!);
   const allowed = { quote: created.quote, items, parent: parent.quote };
@@ -222,11 +225,11 @@ export async function updatableDeals() {
 export async function versionDetail(proposal_code: string) {
   const [r] = await query<{ proposal_code: string; version: number; status_code: string; status_label: string; company_name: string;
     opportunity_code: string; narrative: string; quote: ManualQuote; prepared_for: unknown; parent_proposal_code: string | null;
-    parent_external_ref: string | null; parent_sent_at: string | null; changes: unknown[]; public_token: string; tenant_name: string; owner_name: string; emails: string[] }>(
+    parent_external_ref: string | null; parent_sent_at: string | null; changes: unknown[]; public_token: string; tenant_name: string; owner_name: string; emails: string[]; review_notes: string[] }>(
     `select p.code as proposal_code, p.version, p.status as status_code, nebula.fn_label('proposal_status', p.status) as status_label,
             o.company_name, o.code as opportunity_code, p.narrative, p.quote, p.prepared_for,
             par.code as parent_proposal_code, par.external_ref as parent_external_ref, par.sent_at as parent_sent_at,
-            nebula.fn_proposal_changes(p.id) as changes, p.public_token, t.name as tenant_name, t.owner_name,
+            nebula.fn_proposal_changes(p.id) as changes, p.public_token, t.name as tenant_name, t.owner_name, p.review_notes,
             coalesce((select array_agg(distinct s.email) from nebula.stakeholder s where s.opportunity_id = o.id and s.email is not null and s.audit_status = 'A'), '{}') as emails
        from nebula.proposal p join nebula.opportunity o on o.id = p.opportunity_id join nebula.tenant t on t.id = p.tenant_id
        left join nebula.proposal par on par.id = p.parent_proposal_id
@@ -241,11 +244,16 @@ export async function versionDetail(proposal_code: string) {
 export async function dealMeetings(opportunity_code: string) {
   return query<{ brief_code: string; meeting_at: string; summary: string | null; used: boolean }>(
     `select b.code as brief_code, b.meeting_at, b.summary,
-            exists (select 1 from nebula.proposal_brief pb where pb.brief_id = b.id)
-            or exists (select 1 from nebula.proposal p where p.brief_id = b.id) as used
+            exists (select 1 from nebula.proposal_brief pb join nebula.proposal p on p.id = pb.proposal_id
+                     where pb.brief_id = b.id and p.audit_status = 'A')
+            or exists (select 1 from nebula.proposal p where p.brief_id = b.id and p.audit_status = 'A') as used
        from nebula.meeting_brief b join nebula.opportunity o on o.id = b.opportunity_id join nebula.tenant t on t.id = b.tenant_id
       where t.code = $1 and o.code = $2 and b.audit_status = 'A'
       order by b.meeting_at`,
     [TENANT_CODE, opportunity_code],
   );
+}
+
+export async function discardVersion(proposal_code: string) {
+  return callFn("fn_discard_version", [TENANT_CODE, proposal_code]);
 }

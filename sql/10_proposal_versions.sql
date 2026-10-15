@@ -232,7 +232,7 @@ CREATE OR REPLACE FUNCTION fn_import_proposal(
     p_prepared_for jsonb DEFAULT '[]', p_opportunity_code text DEFAULT NULL)
 RETURNS jsonb LANGUAGE plpgsql SET search_path = nebula, public AS $$
 DECLARE
-    t tenant; o opportunity; v_quote jsonb; v_code text; v_id uuid; v_version int; v_dup text;
+    t tenant; o opportunity; v_quote jsonb; v_code text; v_id uuid; v_version int; v_dup text; v_at timestamptz;
 BEGIN
     t := fn_get_tenant(p_tenant_code);
     IF p_opportunity_code IS NOT NULL THEN
@@ -246,6 +246,7 @@ BEGIN
     IF p_issued_on IS NULL OR p_issued_on > current_date THEN
         RAISE EXCEPTION 'The imported proposal needs the date it was issued (not in the future).';
     END IF;
+    v_at := (p_issued_on + time '12:00') AT TIME ZONE 'America/Bogota';   -- the issue day, not midnight UTC
     IF coalesce(trim(p_external_ref), '') <> '' THEN
         SELECT code INTO v_dup FROM proposal
          WHERE tenant_id = t.id AND external_ref = p_external_ref AND audit_status = 'A';
@@ -264,8 +265,8 @@ BEGIN
     INSERT INTO proposal (tenant_id, code, opportunity_id, brief_id, version, status, quote, narrative,
                           approved_by, approved_at, sent_at, source, pricing_mode, external_ref, prepared_for, created_at)
     VALUES (t.id, v_code, o.id, NULL, v_version, 'S', v_quote, p_narrative,
-            t.owner_name, p_issued_on, p_issued_on, 'I', 'M', nullif(trim(p_external_ref), ''),
-            coalesce(p_prepared_for, '[]'), p_issued_on)
+            t.owner_name, v_at, v_at, 'I', 'M', nullif(trim(p_external_ref), ''),
+            coalesce(p_prepared_for, '[]'), v_at)
     RETURNING id INTO v_id;
     PERFORM fn_store_lines(v_id, v_quote);
 
@@ -348,7 +349,7 @@ BEGIN
     SELECT id INTO v_last FROM meeting_brief WHERE id = ANY (v_brief_ids) ORDER BY meeting_at DESC, created_at DESC LIMIT 1;
 
     v_quote := fn_manual_quote(p_lines, p_terms);
-    SELECT max(version) + 1 INTO v_version FROM proposal WHERE opportunity_id = o.id;
+    SELECT max(version) + 1 INTO v_version FROM proposal WHERE opportunity_id = o.id AND audit_status = 'A';
     v_code := 'PRP-' || lpad(nextval('proposal_seq')::text, 4, '0');
 
     INSERT INTO proposal (tenant_id, code, opportunity_id, brief_id, version, quote, narrative,
@@ -603,3 +604,39 @@ BEGIN
     RETURN jsonb_build_object('brief_code', b.code, 'meeting_at', p_meeting_at);
 END $$;
 REVOKE ALL ON FUNCTION fn_set_brief_meeting_at(text, text, timestamptz) FROM PUBLIC;
+
+-- Decisions the agent left for the owner (shown until the version is approved)
+ALTER TABLE proposal ADD COLUMN IF NOT EXISTS review_notes jsonb NOT NULL DEFAULT '[]';
+
+CREATE OR REPLACE FUNCTION fn_set_review_notes(p_tenant_code text, p_proposal_code text, p_notes jsonb)
+RETURNS jsonb LANGUAGE plpgsql SET search_path = nebula, public AS $$
+DECLARE t tenant; p proposal;
+BEGIN
+    t := fn_get_tenant(p_tenant_code);
+    p := fn_get_proposal(t.id, p_proposal_code);
+    IF p.status <> 'D' THEN
+        RAISE EXCEPTION 'Proposal % is % (%); review notes belong to a Draft.', p.code, p.status, fn_label('proposal_status', p.status);
+    END IF;
+    UPDATE proposal SET review_notes = coalesce(p_notes, '[]') WHERE id = p.id;
+    RETURN jsonb_build_object('proposal_code', p.code, 'review_notes', coalesce(p_notes, '[]'));
+END $$;
+
+-- Discard a draft version (soft delete) so it can be prepared again
+CREATE OR REPLACE FUNCTION fn_discard_version(p_tenant_code text, p_proposal_code text)
+RETURNS jsonb LANGUAGE plpgsql SET search_path = nebula, public AS $$
+DECLARE t tenant; p proposal; v_events int;
+BEGIN
+    t := fn_get_tenant(p_tenant_code);
+    p := fn_get_proposal(t.id, p_proposal_code);
+    IF p.status <> 'D' THEN
+        RAISE EXCEPTION 'Proposal % is % (%); only a Draft can be discarded.', p.code, p.status, fn_label('proposal_status', p.status);
+    END IF;
+    SELECT count(*) INTO v_events FROM proposal_event WHERE proposal_id = p.id;
+    IF v_events > 0 THEN
+        RAISE EXCEPTION 'Proposal % has % customer interactions on record and cannot be discarded.', p.code, v_events;
+    END IF;
+    UPDATE proposal SET audit_status = 'D', deleted_at = now() WHERE id = p.id;
+    RETURN jsonb_build_object('proposal_code', p.code, 'audit_status_code', 'D', 'audit_status_label', fn_label('audit_status', 'D'));
+END $$;
+
+REVOKE ALL ON FUNCTION fn_set_review_notes(text, text, jsonb), fn_discard_version(text, text) FROM PUBLIC;

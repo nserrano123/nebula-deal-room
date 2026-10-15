@@ -11,7 +11,7 @@ type Deal = { opportunity_code: string; company_name: string; proposal_code: str
 type Meeting = { brief_code: string; meeting_at: string; summary: string | null; used: boolean };
 type Detail = { proposal_code: string; version: number; status_code: string; status_label: string; company_name: string; opportunity_code: string;
   narrative: string; quote: Quote; prepared_for: ProposalDoc["prepared_for"]; parent_proposal_code: string | null; parent_external_ref: string | null;
-  parent_sent_at: string | null; changes: Change[]; public_token: string; tenant_name: string; owner_name: string; emails: string[] };
+  parent_sent_at: string | null; changes: Change[]; public_token: string; tenant_name: string; owner_name: string; emails: string[]; review_notes: string[] };
 type DraftInfo = { owner_questions: string[]; price_fixes: string[]; unverified_quotes: string[]; unverified_numbers: string[] };
 
 async function api<T>(url: string, body?: unknown, form?: FormData): Promise<T> {
@@ -257,6 +257,12 @@ function VersionEditor({ code, info, onBack }: { code: string; info: DraftInfo |
       load();
     } catch (e) { setError((e as Error).message); } finally { setBusy(null); }
   }
+  async function discard() {
+    if (!window.confirm(`Discard ${code}? The meetings become available to prepare the version again.`)) return;
+    setBusy("discard"); setError(null);
+    try { await post(`/api/versions/${code}/discard`, {}); onBack(); }
+    catch (e) { setError((e as Error).message); } finally { setBusy(null); }
+  }
   async function approve() {
     setBusy("approve"); setError(null);
     try { await post(`/api/proposals/${code}/approve`, { approved_by: d!.owner_name, narrative: text }); setEditing(false); load(); }
@@ -286,13 +292,12 @@ function VersionEditor({ code, info, onBack }: { code: string; info: DraftInfo |
         <p className="text-sm text-muted"><span className="font-mono">{d.proposal_code}</span> · version {d.version} · {d.status_label}</p>
       </div>
 
-      {info && (info.owner_questions.length > 0 || info.price_fixes.length > 0 || info.unverified_quotes.length > 0 || info.unverified_numbers.length > 0) && (
+      {draft && (d.review_notes.length > 0 || (info && (info.unverified_quotes.length > 0 || info.unverified_numbers.length > 0))) && (
         <div className="space-y-2 rounded-2xl border-2 border-warn/40 bg-warn-soft p-5 text-sm">
           <p className="font-semibold text-warn">Before you send it</p>
-          {info.owner_questions.map((q) => <p key={q}>• {q}</p>)}
-          {info.price_fixes.map((q) => <p key={q}>• {q}</p>)}
-          {info.unverified_quotes.map((q) => <p key={q}>• This quote was not found word for word in the transcripts: “{q}”</p>)}
-          {info.unverified_numbers.length > 0 && <p>• Numbers in the text that are not in the prices: {info.unverified_numbers.join(", ")}</p>}
+          {d.review_notes.map((q) => <p key={q}>• {q}</p>)}
+          {info?.unverified_quotes.map((q) => <p key={q}>• This quote was not found word for word in the transcripts: “{q}”</p>)}
+          {info && info.unverified_numbers.length > 0 && <p>• Numbers in the text that are not in the prices: {info.unverified_numbers.join(", ")}</p>}
         </div>
       )}
 
@@ -326,7 +331,8 @@ function VersionEditor({ code, info, onBack }: { code: string; info: DraftInfo |
         </div>
       )}
 
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        {draft && <button onClick={discard} disabled={!!busy} className="rounded-lg border border-line px-3 py-1.5 text-sm text-muted hover:text-bad">{busy === "discard" ? "Discarding…" : "Discard draft"}</button>}
         {draft && <button onClick={() => setEditing(!editing)} className="rounded-lg border border-line px-3 py-1.5 text-sm">{editing ? "Done editing" : "Edit text"}</button>}
       </div>
       {editing && <textarea value={text} onChange={(e) => setText(e.target.value)} rows={16} className="w-full rounded-lg border border-line bg-card px-3 py-2 text-sm leading-relaxed" />}
